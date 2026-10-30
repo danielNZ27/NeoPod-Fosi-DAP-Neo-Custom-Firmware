@@ -1,6 +1,6 @@
 # NeoPod
 
-**NeoPod** is an open-source custom firmware for the **Fosi Audio DAP Neo** digital audio player. It brings a clean, retro iPod-style interface, smooth navigation, album artwork support, and bit-perfect FLAC and MP3 playback powered by a dual-core audio architecture.
+**NeoPod** is an open-source custom firmware for the **Fosi Audio DAP Neo** digital audio player. It brings a clean, retro iPod-style interface, smooth navigation, album artwork support, and bit-perfect playback powered by a dual-core audio architecture.
 
 ---
 
@@ -18,6 +18,23 @@ Huge credit and gratitude go to the original EchoPod developers for creating the
 > **Use at your own risk.** The author and contributors of this project are **NOT responsible** for any device damage, data loss, bricked hardware, or hardware failure that may result from installing or using this software.
 > 
 > This is an independent, community-developed open-source project. The author is **NOT affiliated with, endorsed by, or connected to Fosi Audio in ANY WAY.**
+
+---
+
+## 🎵 Supported Audio Formats & Codecs
+
+NeoPod features hardware-accelerated playback offloaded to the secondary processor core (Core 1):
+
+| Format | File Extension | Specifications & Features | Decoding Engine |
+| :--- | :--- | :--- | :--- |
+| **FLAC** | `.flac` | Free Lossless Audio Codec (16-bit / 24-bit, up to 192 kHz bit-perfect lossless), Vorbis Comments, embedded artwork | Hardware Core 1 (`neo_flac.bin`) |
+| **MP3** | `.mp3` | MPEG Audio Layer III (CBR & VBR up to 320 kbps), ID3v1 / ID3v2.3 / ID3v2.4 tags, embedded artwork | Hardware Core 1 (`neo_mp3.bin`) |
+| **WAV** | `.wav` | Uncompressed Linear PCM (16-bit / 24-bit RIFF/WAVE) | System Core |
+
+### Artwork & Metadata Support
+- **Embedded Artwork:** Automatically extracts embedded JPEG and PNG front album covers from FLAC and MP3 files.
+- **Folder Artwork:** Reads external image files in the album folder (e.g. `cover.jpg`, `folder.jpg`, `cover.png`).
+- **Music Library Tagging:** Fast library scanning and cataloging by Artist, Album, Track, and Title handled by the background indexer (`neo_scan.bin`).
 
 ---
 
