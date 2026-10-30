@@ -27,9 +27,9 @@ enum {
     RING_WORDS = RING_BLOCKS * BLOCK_WORDS,
     WORDS_PER_FRAME = 2,
     RING_FRAMES = RING_WORDS / WORDS_PER_FRAME,
-    PREFILL_DIVISOR = 10,
+    PREFILL_DIVISOR = 4,
     PREFILL_TIMEOUT_MS = 1000,
-    FILL_BUDGET_BYTES = 8192,
+    FILL_BUDGET_BYTES = 32768,
     IDLE_SHUTDOWN_MS = 3000,
     AUDIO_CLOCK_MHZ = 200,
     TONE_PERIOD_SAMPLES = 100,
@@ -162,6 +162,9 @@ static void pump(uint32_t consumed_frames)
         core1_source_fill(&core1_source);
     }
     audio_engine_pump(&engine, consumed_frames);
+    if (using_core1) {
+        core1_source_fill(&core1_source);
+    }
     uint32_t elapsed_us = hal_clock_microseconds() - decode_started_us;
     stats.busy_us += elapsed_us;
     if (audio_engine_stats(&engine).frames == frames) {

@@ -339,11 +339,12 @@ void audio_engine_pump(AudioEngine *engine, uint32_t consumed)
         return;
     }
     copy_pending(engine);
-    if (engine->pending_frames == 0 && engine->decoding && free_space(engine) > 0) {
+    while (engine->pending_frames == 0 && engine->decoding && free_space(engine) > 0) {
         decode_one(engine);
-        if (!engine->rate_pending) {
-            copy_pending(engine);
+        if (engine->rate_pending || engine->pending_frames == 0) {
+            break;
         }
+        copy_pending(engine);
     }
     if (!engine->decoding) {
         while (free_space(engine) > 0) {

@@ -43,11 +43,13 @@ Write-Host "Extracting companion binary decoders..."
 Run-Checked $objcopy @('-O', 'binary', "$build/platform/device/echo_core1_mp3.elf", "$build/platform/device/core1_mp3.bin")
 Run-Checked $objcopy @('-O', 'binary', "$build/platform/device/echo_core1.elf", "$build/platform/device/core1.bin")
 
-Write-Host "Packaging NeoPod firmware image DP3_V147.IMG..."
-Run-Checked 'python' @("$repoRoot/tools/build_neo_image.py", '--version', '147',
-    '--elf', "$build/platform/device/echo_device.elf", '--output', "$out/DP3_V147.IMG",
+Write-Host "Packaging NeoPod firmware image DP3_V148.IMG..."
+Run-Checked 'python' @("$repoRoot/tools/build_neo_image.py", '--version', '148',
+    '--elf', "$build/platform/device/echo_device.elf", '--output', "$out/DP3_V148.IMG",
     '--overlay', "$build/platform/device/echo_rescan_overlay.elf",
     '--core1-mp3', "$build/platform/device/core1_mp3.bin",
     '--core1-flac', "$build/platform/device/core1.bin", '--sd-output', "$out/sd-card/.echo")
 
-Write-Host "[SUCCESS] NeoPod DP3_V147.IMG packaged in $out/"
+Write-Host "Build Complete!"
+Write-Host "Firmware Image: $out/DP3_V148.IMG"
+Write-Host "Companion Decoders: $out/sd-card/.echo/"
