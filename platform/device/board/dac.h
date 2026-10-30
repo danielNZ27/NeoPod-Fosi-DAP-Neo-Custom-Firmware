@@ -21,3 +21,6 @@ uint8_t dac_path_device_id(void);
 uint32_t dac_path_probe_gpio1(void);
 uint32_t dac_path_probe_gpio2(void);
 uint32_t dac_path_probe_gpio2_direction(void);
+
+uint8_t dac_path_applied_volume(void);
+bool dac_path_is_muted(void);

@@ -426,3 +426,15 @@ if(EXISTS ${ECHO_TOOLS_PYTHON})
 else()
     message(STATUS "tools venv not found: run python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt")
 endif()
+
+# Audio feature regressions shared with EchoPod Enhanced.
+echo_add_unit_test(NAME test_eq SOURCES core/test_eq.c LIBRARIES echo_core)
+echo_add_unit_test(NAME test_replay_gain SOURCES core/test_replay_gain.c LIBRARIES echo_core)
+echo_add_unit_test(NAME test_equalizer_screen SOURCES app/test_equalizer_screen.c app/fake_hal.c
+    LIBRARIES echo_app echo_library_fixtures PRIVATE_INCLUDES ${PROJECT_SOURCE_DIR}/src/app)
+foreach(audio_test aac_probe aac_decoder opus_probe opus_decoder)
+    echo_add_unit_test(NAME test_${audio_test} SOURCES device/test_${audio_test}.c LIBRARIES echo_device_logic)
+    target_compile_definitions(test_${audio_test} PRIVATE ECHO_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+endforeach()
+echo_add_unit_test(NAME test_audio_settings SOURCES app/test_audio_settings.c app/fake_hal.c
+    LIBRARIES echo_app echo_library_fixtures PRIVATE_INCLUDES ${PROJECT_SOURCE_DIR}/src/app)

@@ -1,0 +1,119 @@
+# Changelog
+
+## v1.5.2 — 2026-10-31
+
+Firmware image: `DP3_V152.IMG`. This release collects the changes since v1.4.7,
+including the V151 FLAC fix and V152 Custom EQ controls confirmed on a DAP Neo.
+
+### Fixed: scratchy FLAC playback with very short blocks
+
+- Fixed a decoder handoff bottleneck exposed by a 24-bit / 44.1 kHz FLAC using
+  **47-sample blocks**. Previously each block occupied one of two PCM slots,
+  leaving only about **2.13 ms** queued between the decoder and playback engine.
+- Short blocks now accumulate in the existing PCM slots before publication,
+  targeting at least 2,048 samples per slot. For 47-sample blocks, each slot holds
+  2,068 samples; two slots provide approximately **93.8 ms** of queued PCM.
+- Input bytes are released after each decoded block so the compressed-data ring
+  can refill while an output batch is still being assembled.
+- Final partial batches are delivered before the end/error marker. Seeking drops
+  unpublished batches and starts the new stream with fresh batch state.
+- Added checks for output capacity and contiguous sample positions while batching.
+- Uses the existing PCM slot allocation; no additional PCM buffers are needed.
+- Keeps the 32 KiB SD refill budget and ring-filling playback pump introduced
+  after v1.4.7.
+- Avoids unnecessary 64-bit gain arithmetic at unity gain and repeated checks of
+  flat/disabled EQ for every output sample pair.
+- Retains hardware LPC restoration for larger FLAC blocks using the accelerator's
+  existing split-DMA implementation, and optimized software LPC restoration.
+
+The reported full-length track decoded sample-for-sample identically to FFmpeg,
+both directly and through streaming with two input-ring sizes. The owner then
+confirmed the updated firmware eliminated the scratchiness on the actual Neo.
+This fix does not require converting or changing the original music file.
+
+### Custom EQ designed for the Neo
+
+- Replaced Echo Mini's fixed landscape slider coordinates with a layout derived
+  from screen dimensions. All five bands fit the Neo's **240 × 320** display.
+- Portrait layout shows every frequency, slider and signed gain value, together
+  with the selected band's full frequency/gain heading and separate control hints.
+- Turn the **wheel** to select a band; selection wraps through all five bands.
+- Press **OK** to enter adjustment mode, turn the wheel to raise/lower gain,
+  then press **OK** again to confirm and save.
+- Wheel events now reach the Custom EQ controls directly. Physical volume buttons
+  continue to control playback volume through Neo's existing global handling.
+- Gain changes apply live while EQ is enabled and stay within **−12 to +12 dB**.
+- The existing Back gesture leaves the screen; confirming or leaving saves settings.
+
+### Equalizer and ReplayGain
+
+- Added a fixed-point five-band EQ: **100 Hz, 300 Hz, 1 kHz, 3 kHz, 10 kHz**.
+- Added built-in presets, custom gain editing and up to **eight named user presets**,
+  with save, load, overwrite and delete controls.
+- Added ReplayGain **Off / Track / Album** settings, tag probing across the supported
+  audio sources, peak-based anti-clipping and gain transitions between tracks.
+- Added persistent EQ/ReplayGain settings, backward decoding of legacy settings,
+  validation of gain values and stored presets, and hardware application on load.
+- Added output/DAC diagnostic state for playback, volume, DSP and underrun inspection.
+
+### AAC-LC, Opus and library support
+
+- Added dedicated Core 1 AAC and Opus programs, selected on demand during playback.
+- Integrated the Helix fixed-point AAC decoder and MP4/M4A probing/seeking support.
+- Integrated fixed-point libopus with Ogg packet handling, pre-skip trimming,
+  duration/seeking support and continuation after input starvation.
+- Added `AAC` and `OPUS` format indicators to Now Playing and format plumbing in
+  the player/HAL.
+- Added `.opus` library recognition, Vorbis/Opus tag handling and embedded Opus
+  cover extraction, including reads that move backward within an Ogg stream.
+- Extended packaging/build targets for `neo_aac.bin` and `neo_opus.bin` alongside
+  the existing FLAC, MP3 and scanner companions.
+- Added decoder source/license credits for EchoPod Enhanced, Helix AAC and libopus.
+
+### Verification and developer tools
+
+- Added synthetic high-bitrate 24-bit / 44.1 kHz and 47-sample-block FLAC fixtures;
+  no commercial music is included in the repository or release.
+- Added tests for tiny-block batching, two queued batches, tail handling, seeking,
+  input-ring wraparound and sample-exact output.
+- Added accelerator tests covering full 4,096/4,608-sample blocks, EQ output tests,
+  wheel wraparound, gain bounds, live DSP changes and confirmation saving.
+- Added a host FLAC decode probe and optional full-file streaming comparison.
+- Rendered and visually checked portrait EQ selection and adjustment states.
+- Device build, image header/CRC checks and companion decoder CRC checks pass.
+- Host FLAC, streaming, accelerator, EQ, ReplayGain, settings and Custom EQ suites
+  pass. The full Neo-configured host run passes **109 of 117** suites. The eight
+  failures are `test_toast`, `test_app`, `test_test_pattern_screen`, `test_dac_sequence`,
+  `test_key_ladder`, `test_panel`, `test_audio_engine` and `no_comments`. The full
+  suite is not claimed fully passing; see the release notes for details.
+
+### Installation and upgrade requirements
+
+Download the complete release ZIP, or the firmware and all five companion files:
+
+| File | Destination / purpose |
+| --- | --- |
+| `DP3_V152.IMG` | Firmware image, installed using the existing Neo update procedure |
+| `neo_flac.bin` | MicroSD `/.echo/`; includes the tiny-block playback fix |
+| `neo_mp3.bin` | MicroSD `/.echo/`; MP3 decoder |
+| `neo_aac.bin` | MicroSD `/.echo/`; AAC decoder |
+| `neo_opus.bin` | MicroSD `/.echo/`; Opus decoder |
+| `neo_scan.bin` | MicroSD `/.echo/`; library scanner and metadata/artwork |
+
+- **From v1.4.7 or earlier:** install the firmware and replace/add all five matching
+  companion files. Updating only the firmware does not install the FLAC fix.
+- **From the tested V151 package:** update the firmware image and `neo_scan.bin`.
+  The four audio decoder binaries are unchanged from V151, but the scanner overlay
+  changed with the V152 build and must match the firmware.
+- Merge the `.echo` folder. Preserve your existing settings, library, covers and
+  other data; do not delete the folder to upgrade.
+- Decoder programs continue loading from microSD. This release does not enable
+  the unverified internal-storage decoder loader.
+- EQ and ReplayGain intentionally process audio when enabled; sample-exact neutral
+  playback checks do not imply bit-perfect output with those effects active.
+
+## v1.4.7
+
+Previous public NeoPod release. Includes the Neo hardware port, portrait interface,
+wheel/OK navigation, FLAC/MP3/WAV playback, artwork/library support and Rockusb
+update/recovery tooling. See its GitHub release and repository history for details.

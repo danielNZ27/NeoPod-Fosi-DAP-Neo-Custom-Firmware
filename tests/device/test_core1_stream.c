@@ -34,6 +34,8 @@ static Core1Stream stream;
 static AudioSource interface;
 static Fixture opened;
 static int close_count;
+static const char *external_flac;
+static const char *external_pcm;
 
 static Fixture load(const char *name, const char *extension)
 {
@@ -44,7 +46,10 @@ static Fixture load(const char *name, const char *extension)
         snprintf(path, sizeof path, "%s/flac/%s.%s", ECHO_FIXTURE_DIR, name, extension);
     }
     Fixture fixture = {NULL, 0};
-    FILE *file = fopen(path, "rb");
+    const char *filename = strcmp(name, "external") == 0
+                               ? (strcmp(extension, "pcm") == 0 ? external_pcm : external_flac)
+                               : path;
+    FILE *file = filename == NULL ? NULL : fopen(filename, "rb");
     if (file == NULL) {
         return fixture;
     }
@@ -437,9 +442,69 @@ static void a_file_that_is_not_mp3_is_refused(void)
     CHECK_EQUAL(1, close_count);
 }
 
-int main(void)
+static void high_bitrate_24_bit_44k_streams_exactly_across_ring_wraps(void)
 {
+    CHECK(streams_exactly("high_bitrate_24_44k", 2, BIG_RING_BYTES));
+    /* One incompressible stereo frame exceeds 24 KiB including its header.
+     * Keep the ring larger than a frame, but smaller than this fixture. */
+    CHECK(streams_exactly("high_bitrate_24_44k", 2, 32 * 1024));
+}
+
+static void tiny_flac_blocks_are_batched_without_losing_the_tail(void)
+{
+    start(BIG_RING_BYTES);
+    AudioTrackInfo info;
+    CHECK(interface.open(interface.context, "tiny_blocks_24_44k", 0, &info));
+    CHECK_EQUAL(47u, info.stream.max_block);
+    AudioFrame frame;
+    CHECK_EQUAL(AUDIO_FRAME_READY, next_frame(&frame));
+    CHECK(frame.samples >= 2048);
+    CHECK(frame.samples <= FLAC_MAX_BLOCK);
+    for (int i = 0; i < 200; i++) core1_stream_step(&stream);
+    CHECK_EQUAL(STREAM_SLOT_FULL, control.slots[0].state);
+    CHECK_EQUAL(STREAM_SLOT_FULL, control.slots[1].state);
+    CHECK(control.slots[0].samples + control.slots[1].samples >= 4096);
+    interface.close(interface.context);
+    CHECK(streams_exactly("tiny_blocks_24_44k", 2, BIG_RING_BYTES));
+    CHECK(streams_exactly("tiny_blocks_24_44k", 2, SMALL_RING_BYTES));
+}
+
+static void seeking_discards_an_unpublished_tiny_frame_batch(void)
+{
+    start(SMALL_RING_BYTES);
+    AudioTrackInfo info;
+    CHECK(interface.open(interface.context, "tiny_blocks_24_44k", 0, &info));
+    core1_source_fill(&source);
+    for (int i = 0; i < 10; i++) CHECK(core1_stream_step(&stream));
+    CHECK(stream.batch_samples > 0 && stream.batch_samples < 2048);
+    CHECK(interface.open(interface.context, "tiny_blocks_24_44k", 100, &info));
+    AudioFrame frame;
+    CHECK_EQUAL(AUDIO_FRAME_READY, next_frame(&frame));
+    Fixture pcm = load("tiny_blocks_24_44k", "pcm");
+    uint32_t target = 4410;
+    CHECK(frame.first_sample <= target && target < frame.first_sample + frame.samples);
+    CHECK(frame_matches(&pcm, &frame, 2));
+    free(pcm.bytes);
+    interface.close(interface.context);
+}
+
+int main(int argc, char **argv)
+{
+    /* Optional full-file comparison; PCM is interleaved signed native-width
+     * samples in 32-bit little-endian words, as in the fixture files. */
+    if (argc == 3) {
+        external_flac = argv[1];
+        external_pcm = argv[2];
+        bool exact = streams_exactly("external", 2, BIG_RING_BYTES) &&
+                     streams_exactly("external", 2, SMALL_RING_BYTES);
+        printf("external FLAC streaming comparison: %s\n", exact ? "EXACT" : "FAILED");
+        free(opened.bytes);
+        return exact ? 0 : 1;
+    }
     static const TestCase cases[] = {
+        TEST_CASE(seeking_discards_an_unpublished_tiny_frame_batch),
+        TEST_CASE(tiny_flac_blocks_are_batched_without_losing_the_tail),
+        TEST_CASE(high_bitrate_24_bit_44k_streams_exactly_across_ring_wraps),
         TEST_CASE(a_24_bit_96k_track_streams_through_core_1_exactly),
         TEST_CASE(a_16_bit_track_streams_through_core_1_exactly),
         TEST_CASE(a_mono_track_plays_its_channel_on_both_sides),

@@ -21,6 +21,14 @@ Huge credit and gratitude go to the original EchoPod developers for creating the
 
 ---
 
+## Latest release: v1.5.2
+
+[Download v1.5.2](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/tag/V1.5.2) · [Detailed changelog](CHANGELOG.md)
+
+Fixes scratchy playback for FLAC files with very short blocks, adds portrait Custom EQ with wheel/OK controls, and includes AAC-LC, Opus and ReplayGain support.
+
+Upgrading from v1.4.7: update the firmware **and all five matching `.echo` files**. If you already installed V151, update the firmware and matching `neo_scan.bin`; the audio decoder binaries are unchanged. Preserve existing settings, library and cover files when merging `.echo`.
+
 ## 🎵 Supported Audio Formats & Codecs
 
 NeoPod features hardware-accelerated playback offloaded to the secondary processor core (Core 1):
@@ -29,7 +37,17 @@ NeoPod features hardware-accelerated playback offloaded to the secondary process
 | :--- | :--- | :--- | :--- |
 | **FLAC** | `.flac` | Free Lossless Audio Codec (16-bit / 24-bit, up to 192 kHz bit-perfect lossless), Vorbis Comments, embedded artwork | Hardware Core 1 (`neo_flac.bin`) |
 | **MP3** | `.mp3` | MPEG Audio Layer III (CBR & VBR up to 320 kbps), ID3v1 / ID3v2.3 / ID3v2.4 tags, embedded artwork | Hardware Core 1 (`neo_mp3.bin`) |
+| **AAC-LC** | `.m4a` | AAC-LC in supported MP4/M4A containers | Helix AAC on Core 1 (`neo_aac.bin`) |
+| **Opus** | `.opus` | Ogg Opus, native 48 kHz playback, pre-skip handling | libopus on Core 1 (`neo_opus.bin`) |
 | **WAV** | `.wav` | Uncompressed Linear PCM (16-bit / 24-bit RIFF/WAVE) | System Core |
+
+### Equalizer and ReplayGain
+
+- Five EQ bands: 100 Hz, 300 Hz, 1 kHz, 3 kHz and 10 kHz; -12 to +12 dB.
+- Built-in presets and up to eight named user presets.
+- Custom EQ: turn the wheel to choose a band, press OK to adjust, turn to change gain, then press OK to confirm/save. Selection wraps through all five bands.
+- ReplayGain Off, Track and Album modes, with peak-based anti-clipping when peak tags are available.
+- EQ and ReplayGain are audio processing; sample-exact output applies when processing is neutral.
 
 ### Artwork & Metadata Support
 - **Embedded Artwork:** Automatically extracts embedded JPEG and PNG front album covers from FLAC and MP3 files.
@@ -44,21 +62,21 @@ Follow these steps if your DAP Neo is currently running the factory stock firmwa
 
 ### 1. Download Release Files
 From the [`release/`](./release/) folder in this repository, obtain:
-- `DP3_V147.IMG` (The NeoPod firmware image)
-- The `sd-card/.echo` folder (containing `neo_flac.bin`, `neo_mp3.bin`, and `neo_scan.bin`)
+- `DP3_V152.IMG` (The NeoPod firmware image)
+- The `sd-card/.echo` folder (containing `neo_flac.bin`, `neo_mp3.bin`, `neo_aac.bin`, `neo_opus.bin`, and `neo_scan.bin`)
 
 ### 2. Copy Files to the DAP Neo
 1. Power on your DAP Neo normally and connect it to your PC using a USB-C cable.
 2. Two drives will mount on your computer:
    - The **Internal Storage** drive
    - The **MicroSD Card** drive
-3. Copy **`DP3_V147.IMG`** directly to the **root** of the **Internal Storage** drive (`/`).
+3. Copy **`DP3_V152.IMG`** directly to the **root** of the **Internal Storage** drive (`/`).
 4. Copy the entire **`.echo`** folder directly to the **root** of your **MicroSD Card** (`/`).
    *(The `.echo` folder must be in the root directory so the path is `[SD Card]:\.echo\neo_*.bin`)*.
 
 ### 3. Apply the Firmware
 1. Safely eject and unplug the USB-C cable from the DAP Neo.
-2. The player's stock bootloader will detect `DP3_V147.IMG` and begin the flashing process.
+2. The player's stock bootloader will detect `DP3_V152.IMG` and begin the flashing process.
 3. Once completed, the player will automatically reboot directly into **NeoPod**!
 
 ---
@@ -77,7 +95,7 @@ Updating to a newer version of NeoPod is fast and does **NOT** require reverting
 3. While continuing to hold those 3 buttons, plug the USB-C cable into your PC. Keep holding for 3–5 seconds, then release. The screen remains black in recovery mode.
 4. Run the flashing script:
    ```cmd
-   python flash-neo.py release/DP3_V147.IMG
+   python flash-neo.py release/DP3_V152.IMG
    ```
 5. The script flashes both firmware slots directly, verifies the header, and automatically restarts your player directly into the updated NeoPod release!
 
@@ -87,7 +105,8 @@ Updating to a newer version of NeoPod is fast and does **NOT** require reverting
 
 | Control | Action |
 | :--- | :--- |
-| **Scroll Wheel / Vol+ / Vol-** | Scroll through menus and lists |
+| **Scroll Wheel** | Scroll through menus and lists; choose/adjust Custom EQ bands |
+| **Vol+ / Vol-** | Adjust playback volume |
 | **Center / OK (Single Press)** | Select / Play / Enter menu |
 | **Center / OK (Double Tap)** | Back / Return to previous screen |
 | **Power Button (Short Press)** | Screen sleep / wake |
@@ -100,6 +119,8 @@ Updating to a newer version of NeoPod is fast and does **NOT** require reverting
 NeoPod utilizes the DAP Neo's secondary CPU core (Core 1) for real-time audio decoding and background database indexing:
 - `neo_flac.bin`: Dedicated hardware FLAC audio decoder for Core 1.
 - `neo_mp3.bin`: Dedicated hardware MP3 audio decoder for Core 1.
+- `neo_aac.bin`: AAC-LC decoder for Core 1.
+- `neo_opus.bin`: Ogg Opus decoder for Core 1.
 - `neo_scan.bin`: Ultra-fast library rescan and metadata engine.
 
 *Always keep the `.echo` directory on your MicroSD card updated with the files matching your firmware release.*

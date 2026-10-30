@@ -18,8 +18,9 @@ static bool read_settings(uint8_t *bytes)
     if (!hal_file_open(&file, SETTINGS_STORE_PATH)) {
         return false;
     }
-    bool read =
-        file.size >= SETTINGS_FILE_SIZE && hal_file_read(file, 0, bytes, SETTINGS_FILE_SIZE);
+    for (int index = 0; index < SETTINGS_FILE_SIZE; index++) bytes[index] = 0;
+    uint32_t length = file.size < SETTINGS_FILE_SIZE ? file.size : SETTINGS_FILE_SIZE;
+    bool read = length >= SETTINGS_LEGACY_FILE_SIZE && hal_file_read(file, 0, bytes, length);
     hal_file_close(&file);
     return read;
 }
@@ -85,6 +86,8 @@ void settings_store_restore_playback(const SettingsStore *store, Player *player,
 void settings_store_apply_hardware(const Settings *settings)
 {
     hal_display_set_brightness(settings->brightness);
+    hal_audio_set_eq(settings->eq_enabled, settings->eq_gains);
+    hal_audio_set_replay_gain_mode(settings->replay_gain_mode);
     hal_audio_set_gain(HAL_GAINS[settings->gain]);
     hal_audio_set_output(HAL_OUTPUTS[settings->output]);
     hal_system_set_usb_mode(HAL_USB_MODES[settings->usb_mode]);

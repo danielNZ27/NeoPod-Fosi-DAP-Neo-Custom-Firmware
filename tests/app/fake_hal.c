@@ -36,6 +36,9 @@ typedef struct FakeAudio {
     int refused_plays;
     HalAudioJack jack;
     HalAudioRefusal refusal;
+    bool eq_enabled;
+    int8_t eq_gains[5];
+    ReplayGainMode replay_gain_mode;
 } FakeAudio;
 
 typedef struct WrittenFile {
@@ -1034,4 +1037,44 @@ bool hal_system_restart_pending(void)
 const void *hal_system_load_rescan_code(void)
 {
     return &LIBRARY_SCAN_ENTRY;
+}
+
+void hal_audio_set_eq(bool enabled, const int8_t *gains)
+{
+    fake.audio.eq_enabled = enabled;
+    for (int index = 0; index < 5; index++) {
+        fake.audio.eq_gains[index] = gains[index];
+    }
+}
+
+void hal_audio_set_replay_gain_mode(ReplayGainMode mode)
+{
+    fake.audio.replay_gain_mode = mode;
+}
+
+ReplayGainMode hal_audio_replay_gain_mode(void)
+{
+    return fake.audio.replay_gain_mode;
+}
+
+static bool fake_dsp_bypass;
+
+void hal_audio_set_dsp_bypass(bool bypass)
+{
+    fake_dsp_bypass = bypass;
+}
+
+bool hal_audio_dsp_bypass(void)
+{
+    return fake_dsp_bypass;
+}
+
+bool fake_hal_audio_eq_enabled(void)
+{
+    return fake.audio.eq_enabled;
+}
+
+const int8_t *fake_hal_audio_eq_gains(void)
+{
+    return fake.audio.eq_gains;
 }

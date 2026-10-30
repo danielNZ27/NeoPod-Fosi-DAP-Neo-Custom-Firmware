@@ -199,6 +199,27 @@ static void choose_usb_mode(void *context, int index)
     toast_show(settings->toast, USB_MODE_MESSAGES[index], hal_clock_milliseconds());
 }
 
+static const char *const REPLAY_GAIN_OPTIONS[REPLAY_GAIN_MODE_COUNT] = {"Off", "Track", "Album"};
+static int current_replay_gain(const void *context)
+{
+    return (int)settings_of(context)->replay_gain_mode;
+}
+static void choose_replay_gain(void *context, int index)
+{
+    editable_settings(context)->replay_gain_mode = (ReplayGainMode)index;
+    apply_and_save(context);
+}
+static ScreenAction open_equalizer(void *context)
+{
+    SettingsScreens *screens = context;
+    return screen_action_push(equalizer_screen_init(&screens->equalizer, screens->context.store, screens->theme));
+}
+static const char *equalizer_value(const void *context)
+{
+    const SettingsScreens *screens = context;
+    const Settings *settings = &screens->context.store->settings;
+    return settings->eq_enabled ? settings_preset_name(settings, settings->eq_preset) : "Off";
+}
 static const SettingChoice CHOICES[SETTINGS_CHOICE_COUNT] = {
     {"Shuffle", SHUFFLE_OPTIONS, SHUFFLE_MODE_COUNT, current_shuffle, choose_shuffle, NULL},
     {"Repeat", REPEAT_OPTIONS, REPEAT_MODE_COUNT, current_repeat, choose_repeat, NULL},
@@ -211,6 +232,7 @@ static const SettingChoice CHOICES[SETTINGS_CHOICE_COUNT] = {
     {"Gain", GAIN_OPTIONS, GAIN_LEVEL_COUNT, current_gain, choose_gain, NULL},
     {"Output", OUTPUT_OPTIONS, OUTPUT_JACK_COUNT, current_output, choose_output, describe_output},
     {"Start screen", START_OPTIONS, START_SCREEN_COUNT, current_start, choose_start, NULL},
+    {"ReplayGain", REPLAY_GAIN_OPTIONS, REPLAY_GAIN_MODE_COUNT, current_replay_gain, choose_replay_gain, NULL},
     {"USB mode", USB_MODE_OPTIONS, USB_MODE_COUNT, current_usb_mode, choose_usb_mode, NULL},
 };
 
@@ -268,6 +290,9 @@ Screen *settings_screens_init(SettingsScreens *screens, SettingsContext context,
                                           .value = choice_value,
                                           .opens = true};
     }
+    screens->items[SETTINGS_ITEM_COUNT - 1] = (MenuItem){
+        .label = "Equalizer", .select = open_equalizer, .context = screens,
+        .value = equalizer_value, .opens = true};
     MenuConfig menu = {.title = "Settings",
                        .items = screens->items,
                        .item_count = SETTINGS_ITEM_COUNT,

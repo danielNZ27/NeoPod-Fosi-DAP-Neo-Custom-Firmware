@@ -359,9 +359,15 @@ static void the_position_moves_from_the_audio_start_to_the_next_frame(void)
     free(flac.bytes);
 }
 
+static void high_bitrate_24_bit_44k_decodes_exactly(void)
+{
+    CHECK(decodes_exactly("high_bitrate_24_44k", 44100, 2, 24));
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
+        TEST_CASE(high_bitrate_24_bit_44k_decodes_exactly),
         TEST_CASE(sixteen_bit_lpc_stereo_decodes_exactly),
         TEST_CASE(an_lpc_hook_that_restores_gives_the_same_samples),
         TEST_CASE(a_hook_that_declines_leaves_the_restore_to_software),

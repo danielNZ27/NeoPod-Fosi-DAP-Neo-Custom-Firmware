@@ -81,6 +81,10 @@ typedef struct Core1Stream {
     uint32_t start_offset;
     uint32_t end_offset;
     uint32_t slot;
+    uint32_t batch_target;
+    uint32_t batch_samples;
+    uint32_t batch_first_sample;
+    Core1DecodeResult deferred_result;
     bool finished;
     bool starved;
 } Core1Stream;
@@ -112,3 +116,6 @@ void core1_source_init(Core1Source *source, StreamRegion region, FlacFileOpener 
 void core1_source_fill(Core1Source *source);
 AudioSource core1_source_interface(Core1Source *source);
 AudioSource core1_source_mp3_interface(Core1Source *source);
+
+AudioSource core1_source_aac_interface(Core1Source *source);
+AudioSource core1_source_opus_interface(Core1Source *source);

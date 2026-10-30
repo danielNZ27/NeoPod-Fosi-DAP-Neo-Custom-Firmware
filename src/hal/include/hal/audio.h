@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "core/replay_gain.h"
+
 enum {
     HAL_AUDIO_VOLUME_MAX = 50
 };
@@ -47,7 +49,9 @@ typedef enum HalAudioCodec {
     HAL_AUDIO_CODEC_UNKNOWN,
     HAL_AUDIO_CODEC_FLAC,
     HAL_AUDIO_CODEC_MP3,
-    HAL_AUDIO_CODEC_WAV
+    HAL_AUDIO_CODEC_WAV,
+    HAL_AUDIO_CODEC_AAC,
+    HAL_AUDIO_CODEC_OPUS
 } HalAudioCodec;
 
 typedef struct HalAudioFormat {
@@ -80,6 +84,20 @@ typedef struct HalAudioStats {
     uint32_t read_total_us;
     uint32_t busy_us;
     uint32_t elapsed_us;
+    uint32_t produced;
+    uint32_t consumed;
+    uint32_t dma_sar;
+    bool dma_running;
+    bool transferring;
+    uint8_t dac_volume;
+    bool dac_muted;
+    bool dac_up;
+    uint32_t dac_rate;
+    bool eq_enabled;
+    bool eq_flat;
+    bool dsp_bypass;
+    ReplayGainMode replay_gain_mode;
+    uint32_t replay_gain_mult;
 } HalAudioStats;
 
 typedef enum HalToneResult {
@@ -121,6 +139,11 @@ void hal_audio_seek(uint32_t position_ms);
 void hal_audio_set_volume(uint8_t level);
 void hal_audio_set_gain(HalAudioGain gain);
 void hal_audio_set_output(HalAudioOutput output);
+void hal_audio_set_eq(bool enabled, const int8_t *gains);
+void hal_audio_set_replay_gain_mode(ReplayGainMode mode);
+ReplayGainMode hal_audio_replay_gain_mode(void);
+void hal_audio_set_dsp_bypass(bool bypass);
+bool hal_audio_dsp_bypass(void);
 HalAudioStatus hal_audio_status(void);
 HalAudioStats hal_audio_stats(void);
 void hal_audio_service(void);

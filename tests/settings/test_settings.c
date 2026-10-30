@@ -8,7 +8,8 @@ enum {
     AUTO_OFF_FIELD = 14,
     USB_MODE_FIELD = 15,
     DAC_VOLUME_FIELD = 16,
-    CHECKSUM_FIELD = 20,
+    LEGACY_CHECKSUM_FIELD = 20,
+    CHECKSUM_FIELD = SETTINGS_FILE_SIZE - 4,
     NEVER_OPTION = 6
 };
 
@@ -31,9 +32,10 @@ static Settings custom_settings(void)
 
 static void rewrite_checksum(uint8_t *bytes)
 {
-    uint32_t checksum = hash_update(HASH_START, bytes, CHECKSUM_FIELD);
+    int field = bytes[VERSION_FIELD] <= 4 ? LEGACY_CHECKSUM_FIELD : CHECKSUM_FIELD;
+    uint32_t checksum = hash_update(HASH_START, bytes, (size_t)field);
     for (int index = 0; index < 4; index++) {
-        bytes[CHECKSUM_FIELD + index] = (uint8_t)(checksum >> (8 * index));
+        bytes[field + index] = (uint8_t)(checksum >> (8 * index));
     }
 }
 
@@ -95,7 +97,7 @@ static void the_usb_mode_and_dac_volume_are_saved_at_bytes_fifteen_and_sixteen(v
     Settings settings = custom_settings();
     uint8_t bytes[SETTINGS_FILE_SIZE];
     settings_encode(&settings, bytes);
-    CHECK_EQUAL(4, bytes[VERSION_FIELD]);
+    CHECK_EQUAL(6, bytes[VERSION_FIELD]);
     CHECK_EQUAL(USB_MODE_DAC, bytes[USB_MODE_FIELD]);
     CHECK_EQUAL(37, bytes[DAC_VOLUME_FIELD]);
 }
@@ -139,7 +141,7 @@ static void a_newer_version_is_rejected(void)
     Settings settings = custom_settings();
     uint8_t bytes[SETTINGS_FILE_SIZE];
     settings_encode(&settings, bytes);
-    bytes[VERSION_FIELD] = 5;
+    bytes[VERSION_FIELD] = 7;
     rewrite_checksum(bytes);
     CHECK(!settings_decode(bytes, sizeof bytes, &settings));
 }

@@ -38,7 +38,47 @@ static bool rate_supported(uint32_t rate)
 
 void audio_engine_init(AudioEngine *engine, AudioEngineConfig config)
 {
-    *engine = (AudioEngine){.config = config, .state = AUDIO_ENGINE_STOPPED, .gain = UNITY_GAIN};
+    *engine = (AudioEngine){.config = config,
+                            .state = AUDIO_ENGINE_STOPPED,
+                            .gain = UNITY_GAIN,
+                            .replay_gain_mode = REPLAY_GAIN_OFF,
+                            .replay_gain_mult = UNITY_GAIN,
+                            .target_replay_gain_mult = UNITY_GAIN};
+    eq_init(&engine->eq);
+}
+
+void audio_engine_set_replay_gain_mode(AudioEngine *engine, ReplayGainMode mode)
+{
+    engine->replay_gain_mode = mode;
+    engine->target_replay_gain_mult =
+        replay_gain_calculate_multiplier(&engine->decode_track.replay_gain, mode);
+    engine->replay_gain_mult = engine->target_replay_gain_mult;
+}
+
+ReplayGainMode audio_engine_replay_gain_mode(const AudioEngine *engine)
+{
+    return engine->replay_gain_mode;
+}
+
+uint32_t audio_engine_replay_gain_mult(const AudioEngine *engine)
+{
+    return engine->replay_gain_mult;
+}
+
+void audio_engine_set_eq(AudioEngine *engine, bool enabled, const int8_t *gains)
+{
+    eq_set_enabled(&engine->eq, enabled);
+    eq_set_gains(&engine->eq, gains);
+}
+
+void audio_engine_set_dsp_bypass(AudioEngine *engine, bool bypass)
+{
+    engine->dsp_bypass = bypass;
+}
+
+bool audio_engine_dsp_bypass(const AudioEngine *engine)
+{
+    return engine->dsp_bypass;
 }
 
 void audio_engine_set_volume(AudioEngine *engine, uint8_t level)
@@ -91,6 +131,7 @@ static bool open_track(AudioEngine *engine, const char *path, uint32_t start_ms)
         (uint32_t)((uint64_t)start_ms * info.sample_rate / MILLISECONDS_PER_SECOND);
     engine->decode_rate = info.sample_rate;
     engine->decode_track = track;
+    eq_set_sample_rate(&engine->eq, info.sample_rate);
     engine->holding_frame = false;
     engine->pending_frames = 0;
     engine->pending_offset = 0;
@@ -129,6 +170,7 @@ static bool start_track(AudioEngine *engine, const char *path, uint32_t start_ms
 {
     close_file(engine);
     reset_positions(engine);
+    eq_reset(&engine->eq);
     engine->stats = (AudioEngineStats){0};
     engine->failed = false;
     if (!open_track(engine, path, start_ms)) {
@@ -139,6 +181,9 @@ static bool start_track(AudioEngine *engine, const char *path, uint32_t start_ms
         return false;
     }
     engine->output_rate = engine->decode_rate;
+    engine->target_replay_gain_mult = replay_gain_calculate_multiplier(
+        &engine->decode_track.replay_gain, engine->replay_gain_mode);
+    engine->replay_gain_mult = engine->target_replay_gain_mult;
     push_segment(engine, path, token, 0, start_ms);
     engine->state = AUDIO_ENGINE_PLAYING;
     return true;
@@ -201,6 +246,11 @@ static int64_t floor_shift(int64_t value, int shift)
 
 static int32_t to_output(int32_t sample, int bits, uint32_t gain)
 {
+    /* Decoders supply signed samples at their declared width. Unity gain needs
+     * only alignment, avoiding two 64-bit multiplies per stereo frame. */
+    if (gain == UNITY_GAIN && bits > 0 && bits <= OUTPUT_BITS) {
+        return sample * (int32_t)(1u << (OUTPUT_BITS - bits));
+    }
     int64_t value = (int64_t)sample * gain;
     int shift = GAIN_SHIFT;
     if (bits > OUTPUT_BITS) {
@@ -236,15 +286,43 @@ static void write_frame(AudioEngine *engine, int32_t left, int32_t right)
     engine->produced++;
 }
 
+static int32_t apply_mult(int32_t sample, uint32_t mult)
+{
+    int64_t value = (int64_t)sample * mult;
+    int64_t rounded = floor_shift(value + (INT64_C(1) << (GAIN_SHIFT - 1)), GAIN_SHIFT);
+    return rounded > SAMPLE_MAX ? SAMPLE_MAX : rounded < SAMPLE_MIN ? SAMPLE_MIN : (int32_t)rounded;
+}
+
 static void copy_pending(AudioEngine *engine)
 {
     const int32_t *left = engine->frame.left;
     const int32_t *right = engine->frame.right;
     int bits = engine->frame.bits;
+    if (!engine->dsp_bypass && engine->pending_offset == 0) {
+        eq_step_gains(&engine->eq);
+    }
+    bool process_eq = !engine->dsp_bypass && engine->eq.enabled && !eq_is_flat(&engine->eq);
     while (engine->pending_frames > 0 && free_space(engine) > 0) {
+        if (engine->replay_gain_mult != engine->target_replay_gain_mult) {
+            int32_t diff =
+                (int32_t)engine->target_replay_gain_mult - (int32_t)engine->replay_gain_mult;
+            int32_t step = diff / 64;
+            if (step == 0) {
+                step = diff > 0 ? 1 : -1;
+            }
+            engine->replay_gain_mult = (uint32_t)((int32_t)engine->replay_gain_mult + step);
+        }
         uint32_t index = engine->pending_offset;
-        write_frame(engine, to_output(left[index], bits, engine->gain),
-                    to_output(right[index], bits, engine->gain));
+        int32_t l = to_output(left[index], bits, engine->gain);
+        int32_t r = to_output(right[index], bits, engine->gain);
+        if (!engine->dsp_bypass && engine->replay_gain_mult != UNITY_GAIN) {
+            l = apply_mult(l, engine->replay_gain_mult);
+            r = apply_mult(r, engine->replay_gain_mult);
+        }
+        if (process_eq) {
+            eq_process_frame(&engine->eq, &l, &r);
+        }
+        write_frame(engine, l, r);
         engine->pending_offset++;
         engine->pending_frames--;
     }
@@ -268,6 +346,8 @@ static void finish_decoding(AudioEngine *engine)
         engine->failed = true;
         return;
     }
+    engine->target_replay_gain_mult = replay_gain_calculate_multiplier(
+        &engine->decode_track.replay_gain, engine->replay_gain_mode);
     if (engine->decode_rate != engine->output_rate) {
         engine->rate_pending = true;
         return;

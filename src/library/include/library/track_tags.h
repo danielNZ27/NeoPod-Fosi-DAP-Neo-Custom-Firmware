@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "core/replay_gain.h"
 #include "library/byte_source.h"
 
 enum {
@@ -51,7 +52,11 @@ typedef struct TrackTags {
     char text[TAG_FIELD_COUNT][TRACK_TAG_TEXT_CAPACITY];
     uint32_t duration_ms;
     TagPicture picture;
+    ReplayGainValues replay_gain;
 } TrackTags;
 
 TagFormat track_tags_format_for_name(const char *name);
 bool track_tags_read(ByteSource source, uint32_t size, TagFormat format, TrackTags *tags);
+bool tags_decode_ogg_picture(ByteSource source, uint32_t size, uint32_t b64_offset,
+                             uint32_t b64_length, void *memory, uint32_t memory_size,
+                             uint16_t *full, uint16_t *half);

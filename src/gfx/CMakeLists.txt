@@ -11,5 +11,5 @@ add_library(echo_gfx STATIC
 target_include_directories(echo_gfx PUBLIC include)
 target_link_libraries(echo_gfx
     PUBLIC echo_core
-    PRIVATE echo_options
+    PRIVATE echo_options echo_compact
 )

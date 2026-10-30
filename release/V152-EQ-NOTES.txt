@@ -1,0 +1,22 @@
+NeoPod V152 - portrait Custom EQ and wheel controls
+
+Install DP3_V152.IMG using your usual NeoPod update procedure.
+V151 users must update the firmware AND neo_scan.bin; the four audio decoders
+are unchanged from V151. The matching companion files are included under sd-card/.echo; copy sd-card
+contents to the microSD root, merging .echo and preserving existing settings,
+library and cover files. This release retains V151's tiny-block FLAC fix.
+
+Custom EQ:
+- All five sliders, frequencies and gain values fit the 240x320 Neo screen.
+- Turn the wheel to choose a band; selection wraps through all five bands.
+- Press OK to adjust the selected band.
+- Turn the wheel to raise/lower its gain, limited to -12..+12 dB.
+- Press OK again to confirm and save; the wheel chooses bands again.
+- Adjustments apply live when the equalizer is enabled.
+- Use the existing Back gesture to leave the screen.
+
+Verification: all 9 equalizer-screen cases pass, including wheel wraparound,
+selection, gain limits, DSP updates and confirmation saving. EQ, settings and
+FLAC streaming suites pass. Portrait select/adjust previews were rendered
+and visually checked. Device build and firmware image CRC validation pass.
+Not flashed by the agent.

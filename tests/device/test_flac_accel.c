@@ -301,6 +301,30 @@ static void the_hook_takes_only_classes_that_passed(void)
     CHECK_EQUAL(1u, hook.restored);
 }
 
+static void the_hook_accelerates_full_size_blocks_with_split_dma_jobs(void)
+{
+    static const int32_t COEFFICIENTS[4] = {4, -6, 4, -1};
+    static int32_t expected[4608];
+    const uint32_t sizes[] = {4096, 4608};
+    for (unsigned test = 0; test < sizeof sizes / sizeof sizes[0]; test++) {
+        reset_fake();
+        uint32_t count = sizes[test];
+        fill_signal(fake.memory, count, 24, 7);
+        memcpy(expected, fake.memory, count * sizeof(int32_t));
+        flac_lpc_restore(expected, count, COEFFICIENTS, 4, 2);
+        AccelHook hook = {.bus = &BUS, .window = fake.memory,
+                          .window_address = MEMORY_BASE, .narrow = true, .wide = true};
+        FlacLpcHook lpc = flac_accel_hook(&hook);
+        FlacLpcJob job = job_of(COEFFICIENTS, 4, 24, 4);
+        job.block_size = count;
+        job.shift = 2;
+        CHECK(lpc.restore(lpc.context, fake.memory, job));
+        CHECK_EQUAL(2, fake.jobs);
+        CHECK_EQUAL(1u, hook.restored);
+        CHECK(memcmp(expected, fake.memory, count * sizeof(int32_t)) == 0);
+    }
+}
+
 static void a_timeout_turns_the_hook_off(void)
 {
     reset_fake();
@@ -344,6 +368,7 @@ int main(void)
         TEST_CASE(a_32_bit_accelerator_fails_only_the_wide_class),
         TEST_CASE(a_dead_accelerator_fails_both_and_says_it_timed_out),
         TEST_CASE(the_hook_takes_only_classes_that_passed),
+        TEST_CASE(the_hook_accelerates_full_size_blocks_with_split_dma_jobs),
         TEST_CASE(a_timeout_turns_the_hook_off),
         TEST_CASE(the_timing_block_is_a_full_24_bit_order_12_block),
     };

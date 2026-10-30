@@ -473,9 +473,34 @@ static void a_frame_is_released_once_its_samples_are_in_the_ring(void)
     CHECK_EQUAL(1, scripted.closes);
 }
 
+static void high_bitrate_24_bit_44k_reaches_the_output_ring_exactly(void)
+{
+    start_engine();
+    CHECK(audio_engine_play(&engine, "high_bitrate_24_44k", 0, 1));
+    pump_until_full(0);
+    CHECK(ring_holds("high_bitrate_24_44k", 0, 0, RING_FRAMES, 24));
+}
+
+static void enabled_eq_changes_the_decoded_audio_in_the_output_ring(void)
+{
+    static uint32_t dry[1024];
+    const int8_t gains[EQ_BAND_COUNT] = {-12, -12, -12, -12, -12};
+    start_engine();
+    CHECK(audio_engine_play(&engine, "lpc_24_96k_stereo", 0, 1));
+    pump_until_full(0);
+    memcpy(dry, ring, sizeof dry);
+    start_engine();
+    audio_engine_set_eq(&engine, true, gains);
+    CHECK(audio_engine_play(&engine, "lpc_24_96k_stereo", 0, 1));
+    pump_until_full(0);
+    CHECK(memcmp(dry, ring, sizeof dry) != 0);
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
+        TEST_CASE(high_bitrate_24_bit_44k_reaches_the_output_ring_exactly),
+        TEST_CASE(enabled_eq_changes_the_decoded_audio_in_the_output_ring),
         TEST_CASE(the_current_path_is_the_track_being_played),
         TEST_CASE(a_source_that_is_not_ready_leaves_the_ring_alone),
         TEST_CASE(a_frame_is_released_once_its_samples_are_in_the_ring),

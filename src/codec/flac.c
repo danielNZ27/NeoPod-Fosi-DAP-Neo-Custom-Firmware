@@ -318,9 +318,87 @@ static void restore_fixed(int32_t *samples, uint32_t block_size, uint32_t order)
 static void restore_lpc(int32_t *samples, uint32_t block_size, const int32_t *coefficients,
                         uint32_t order, uint32_t shift)
 {
+    switch (order) {
+    case 1:
+        for (uint32_t index = 1; index < block_size; index++) {
+            int64_t sum = (int64_t)coefficients[0] * samples[index - 1];
+            int64_t predicted = sum >= 0 ? sum >> shift : -((-sum - 1) >> shift) - 1;
+            samples[index] += (int32_t)predicted;
+        }
+        return;
+    case 2:
+        for (uint32_t index = 2; index < block_size; index++) {
+            int64_t sum = (int64_t)coefficients[0] * samples[index - 1] +
+                          (int64_t)coefficients[1] * samples[index - 2];
+            int64_t predicted = sum >= 0 ? sum >> shift : -((-sum - 1) >> shift) - 1;
+            samples[index] += (int32_t)predicted;
+        }
+        return;
+    case 3:
+        for (uint32_t index = 3; index < block_size; index++) {
+            int64_t sum = (int64_t)coefficients[0] * samples[index - 1] +
+                          (int64_t)coefficients[1] * samples[index - 2] +
+                          (int64_t)coefficients[2] * samples[index - 3];
+            int64_t predicted = sum >= 0 ? sum >> shift : -((-sum - 1) >> shift) - 1;
+            samples[index] += (int32_t)predicted;
+        }
+        return;
+    case 4:
+        for (uint32_t index = 4; index < block_size; index++) {
+            int64_t sum = (int64_t)coefficients[0] * samples[index - 1] +
+                          (int64_t)coefficients[1] * samples[index - 2] +
+                          (int64_t)coefficients[2] * samples[index - 3] +
+                          (int64_t)coefficients[3] * samples[index - 4];
+            int64_t predicted = sum >= 0 ? sum >> shift : -((-sum - 1) >> shift) - 1;
+            samples[index] += (int32_t)predicted;
+        }
+        return;
+    case 8:
+        for (uint32_t index = 8; index < block_size; index++) {
+            int64_t sum = (int64_t)coefficients[0] * samples[index - 1] +
+                          (int64_t)coefficients[1] * samples[index - 2] +
+                          (int64_t)coefficients[2] * samples[index - 3] +
+                          (int64_t)coefficients[3] * samples[index - 4] +
+                          (int64_t)coefficients[4] * samples[index - 5] +
+                          (int64_t)coefficients[5] * samples[index - 6] +
+                          (int64_t)coefficients[6] * samples[index - 7] +
+                          (int64_t)coefficients[7] * samples[index - 8];
+            int64_t predicted = sum >= 0 ? sum >> shift : -((-sum - 1) >> shift) - 1;
+            samples[index] += (int32_t)predicted;
+        }
+        return;
+    case 12:
+        for (uint32_t index = 12; index < block_size; index++) {
+            int64_t sum = (int64_t)coefficients[0] * samples[index - 1] +
+                          (int64_t)coefficients[1] * samples[index - 2] +
+                          (int64_t)coefficients[2] * samples[index - 3] +
+                          (int64_t)coefficients[3] * samples[index - 4] +
+                          (int64_t)coefficients[4] * samples[index - 5] +
+                          (int64_t)coefficients[5] * samples[index - 6] +
+                          (int64_t)coefficients[6] * samples[index - 7] +
+                          (int64_t)coefficients[7] * samples[index - 8] +
+                          (int64_t)coefficients[8] * samples[index - 9] +
+                          (int64_t)coefficients[9] * samples[index - 10] +
+                          (int64_t)coefficients[10] * samples[index - 11] +
+                          (int64_t)coefficients[11] * samples[index - 12];
+            int64_t predicted = sum >= 0 ? sum >> shift : -((-sum - 1) >> shift) - 1;
+            samples[index] += (int32_t)predicted;
+        }
+        return;
+    default:
+        break;
+    }
+
     for (uint32_t index = order; index < block_size; index++) {
         int64_t sum = 0;
-        for (uint32_t tap = 0; tap < order; tap++) {
+        uint32_t tap = 0;
+        for (; tap + 4 <= order; tap += 4) {
+            sum += (int64_t)coefficients[tap] * samples[index - 1 - tap] +
+                   (int64_t)coefficients[tap + 1] * samples[index - 2 - tap] +
+                   (int64_t)coefficients[tap + 2] * samples[index - 3 - tap] +
+                   (int64_t)coefficients[tap + 3] * samples[index - 4 - tap];
+        }
+        for (; tap < order; tap++) {
             sum += (int64_t)coefficients[tap] * samples[index - 1 - tap];
         }
         int64_t predicted = sum >= 0 ? sum >> shift : -((-sum - 1) >> shift) - 1;

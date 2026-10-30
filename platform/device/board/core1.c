@@ -115,7 +115,10 @@ static Core1Result place_program(Core1Program program)
 {
 #ifdef ECHO_BOARD_NEO
     HalFile file;
-    const char *path = program == CORE1_PROGRAM_MP3 ? "/.echo/neo_mp3.bin" : "/.echo/neo_flac.bin";
+    const char *path = program == CORE1_PROGRAM_MP3 ? "/.echo/neo_mp3.bin"
+                     : program == CORE1_PROGRAM_AAC ? "/.echo/neo_aac.bin"
+                     : program == CORE1_PROGRAM_OPUS ? "/.echo/neo_opus.bin"
+                     : "/.echo/neo_flac.bin";
     if (hal_system_restart_pending() || !hal_file_open(&file, path)) {
         return CORE1_NO_REPLY;
     }

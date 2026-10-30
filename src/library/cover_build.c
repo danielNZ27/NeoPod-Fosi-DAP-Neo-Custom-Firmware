@@ -41,6 +41,8 @@ typedef struct CoverLayout {
 } CoverLayout;
 
 typedef struct ArtFile {
+    bool ogg_picture;
+    uint32_t source_size;
     ByteSource source;
     uint32_t offset;
     uint32_t length;
@@ -349,10 +351,12 @@ static bool open_embedded(CoverState *state, const CoverJob *job, ArtFile *art)
     TagFormat format = track_tags_format_for_name(state->path);
     bool tagged = track_tags_read(art->source, size, format, &state->tags);
     TagPicture picture = state->tags.picture;
-    if (!tagged || picture.kind != TAG_PICTURE_RAW || picture.length == 0) {
+    if (!tagged || (picture.kind != TAG_PICTURE_RAW && picture.kind != TAG_PICTURE_BASE64_FLAC_BLOCK) || picture.length == 0) {
         job->files.close_file(job->files.context);
         return false;
     }
+    art->ogg_picture = picture.kind == TAG_PICTURE_BASE64_FLAC_BLOCK;
+    art->source_size = size;
     art->offset = picture.offset;
     art->length = picture.length;
     art->stamp = art_stamp(state->path, size, picture.length, ART_EMBEDDED);
@@ -468,6 +472,8 @@ static bool open_art_file(CoverState *state, const CoverJob *job, CoverMatch mat
         !job->files.open_file(job->files.context, state->path, &art->source, &size)) {
         return false;
     }
+    art->ogg_picture = false;
+    art->source_size = size;
     art->offset = 0;
     art->length = size;
     art->stamp = art_stamp(state->path, size, match.modified, ART_FILE);
@@ -515,6 +521,10 @@ static bool open_art(CoverState *state, const CoverJob *job, ArtFile *art)
 
 static bool decode_art(CoverState *state, const ArtFile *art)
 {
+    if (art->ogg_picture) {
+        return tags_decode_ogg_picture(art->source, art->source_size, art->offset, art->length,
+            state->decode_memory, state->decode_size, state->full, state->half);
+    }
     ImageSource image = {art->source.read, art->source.context, art->offset, art->length};
     return cover_image_decode(image, state->decode_memory, state->decode_size, state->full,
                               state->half) == COVER_IMAGE_OK;

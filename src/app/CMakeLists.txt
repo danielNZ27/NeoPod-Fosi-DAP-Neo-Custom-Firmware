@@ -21,6 +21,9 @@ add_library(echo_app STATIC
     spoken_store.c
     screens/bluetooth_screen.c
     screens/cover_flow_screen.c
+    screens/custom_eq_screen.c
+    screens/equalizer_screen.c
+    screens/save_preset_screen.c
     screens/font_sample_screen.c
     screens/now_playing_screen.c
     screens/up_next_screen.c

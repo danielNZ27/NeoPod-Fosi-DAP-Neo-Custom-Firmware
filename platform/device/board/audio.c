@@ -13,7 +13,9 @@
 #include "device/dac_sequence.h"
 #include "device/dma_loop.h"
 #include "device/flac_source.h"
+#include "device/aac_probe.h"
 #include "device/mp3_probe.h"
+#include "device/opus_probe.h"
 #include "device/wav_source.h"
 #include "dmac.h"
 #include "hal/audio.h"
@@ -36,13 +38,15 @@ enum {
     TONE_AMPLITUDE = 9000,
     MILLISECONDS_PER_SECOND = 1000,
     JACK_POLL_MS = 10,
-    SNIFF_BYTES = 12
+    SNIFF_BYTES = 36
 };
 
 typedef enum SourceKind {
     SOURCE_FLAC,
     SOURCE_WAV,
     SOURCE_MP3,
+    SOURCE_AAC,
+    SOURCE_OPUS,
     SOURCE_UNKNOWN
 } SourceKind;
 
@@ -134,6 +138,7 @@ static bool volume_set;
 static HalAudioOutput output_setting;
 static uint32_t last_jack_poll_ms;
 static HalAudioStats stats;
+static bool dsp_bypass_enabled;
 static uint32_t read_us_pending;
 static uint32_t output_started_us;
 
@@ -218,7 +223,13 @@ static SourceKind kind_of(const char *path)
     if (tag_is(magic, "RIFF") && tag_is(magic + 8, "WAVE")) {
         return SOURCE_WAV;
     }
-    return mp3_signature(magic) ? SOURCE_MP3 : SOURCE_UNKNOWN;
+    if (mp3_signature(magic)) {
+        return SOURCE_MP3;
+    }
+    if (opus_signature(magic, sizeof magic)) {
+        return SOURCE_OPUS;
+    }
+    return aac_signature(magic, sizeof magic) ? SOURCE_AAC : SOURCE_UNKNOWN;
 }
 
 static AudioSource chosen_source(void)
@@ -228,6 +239,12 @@ static AudioSource chosen_source(void)
     }
     if (source_kind == SOURCE_MP3) {
         return core1_source_mp3_interface(&core1_source);
+    }
+    if (source_kind == SOURCE_AAC) {
+        return core1_source_aac_interface(&core1_source);
+    }
+    if (source_kind == SOURCE_OPUS) {
+        return core1_source_opus_interface(&core1_source);
     }
     return using_core1 ? core1_source_interface(&core1_source)
                        : flac_source_interface(&software_source);
@@ -262,6 +279,18 @@ static bool open_chosen(void *context, const char *path, uint32_t start_ms, Audi
     }
     if (source_kind == SOURCE_MP3) {
         using_core1 = board_core1_start_stream(CORE1_PROGRAM_MP3);
+        if (!using_core1) {
+            return false;
+        }
+    }
+    if (source_kind == SOURCE_AAC) {
+        using_core1 = board_core1_start_stream(CORE1_PROGRAM_AAC);
+        if (!using_core1) {
+            return false;
+        }
+    }
+    if (source_kind == SOURCE_OPUS) {
+        using_core1 = board_core1_start_stream(CORE1_PROGRAM_OPUS);
         if (!using_core1) {
             return false;
         }
@@ -558,6 +587,36 @@ void hal_audio_set_output(HalAudioOutput output)
     apply_volume();
 }
 
+void hal_audio_set_eq(bool enabled, const int8_t *gains)
+{
+    ensure_engine();
+    audio_engine_set_eq(&engine, enabled, gains);
+}
+
+void hal_audio_set_replay_gain_mode(ReplayGainMode mode)
+{
+    ensure_engine();
+    audio_engine_set_replay_gain_mode(&engine, mode);
+}
+
+ReplayGainMode hal_audio_replay_gain_mode(void)
+{
+    ensure_engine();
+    return audio_engine_replay_gain_mode(&engine);
+}
+
+void hal_audio_set_dsp_bypass(bool bypass)
+{
+    dsp_bypass_enabled = bypass;
+    ensure_engine();
+    audio_engine_set_dsp_bypass(&engine, bypass);
+}
+
+bool hal_audio_dsp_bypass(void)
+{
+    return dsp_bypass_enabled;
+}
+
 static HalAudioState state_of(AudioEngineState state)
 {
     switch (state) {
@@ -578,6 +637,10 @@ static HalAudioCodec codec_of(AudioCodec codec)
         return HAL_AUDIO_CODEC_WAV;
     case AUDIO_CODEC_MP3:
         return HAL_AUDIO_CODEC_MP3;
+    case AUDIO_CODEC_AAC:
+        return HAL_AUDIO_CODEC_AAC;
+    case AUDIO_CODEC_OPUS:
+        return HAL_AUDIO_CODEC_OPUS;
     case AUDIO_CODEC_FLAC:
         break;
     }
@@ -705,15 +768,30 @@ void hal_audio_service(void)
 HalAudioStats hal_audio_stats(void)
 {
     HalAudioStats result = stats;
+    result.transferring = transferring;
+    result.dma_running = dmac_running();
+    result.dma_sar = dmac_source();
+    result.dac_volume = dac_path_applied_volume();
+    result.dac_muted = dac_path_is_muted();
+    result.dac_up = path_up;
+    result.dac_rate = path_rate;
+    result.dsp_bypass = dsp_bypass_enabled;
+    if (engine_ready) {
+        result.produced = engine.produced;
+        result.eq_enabled = engine.eq.enabled;
+        result.eq_flat = eq_is_flat(&engine.eq);
+        result.replay_gain_mode = engine.replay_gain_mode;
+        result.replay_gain_mult = engine.replay_gain_mult;
+        result.underruns = audio_engine_stats(&engine).underruns;
+    }
     if (!engine_ready || !transferring || tone_active) {
         return result;
     }
-    result.underruns = audio_engine_stats(&engine).underruns;
+    result.consumed = consumed;
     result.elapsed_us = hal_clock_microseconds() - output_started_us;
     uint32_t rate = audio_engine_rate(&engine);
     if (rate > 0) {
-        result.buffered_ms = (uint32_t)((uint64_t)audio_engine_buffered(&engine, consumed) *
-                                        MILLISECONDS_PER_SECOND / rate);
+        result.buffered_ms = audio_engine_buffered(&engine, consumed) * (uint32_t)MILLISECONDS_PER_SECOND / rate;
     }
     return result;
 }

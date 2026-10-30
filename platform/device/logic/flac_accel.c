@@ -329,6 +329,8 @@ AccelTest flac_accel_self_test(const AccelBus *bus, int32_t *scratch, uint32_t s
 static bool restore_with_accelerator(void *context, int32_t *samples, FlacLpcJob job)
 {
     AccelHook *hook = context;
+    /* MAX_JOB limits one DMA transfer, not the FLAC block. The restore
+     * routine splits larger blocks and retains the predictor warm-up. */
     if (job.order < SMALLEST_HARDWARE_ORDER) {
         return false;
     }

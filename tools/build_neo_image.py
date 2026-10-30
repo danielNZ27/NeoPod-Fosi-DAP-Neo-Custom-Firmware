@@ -27,6 +27,8 @@ def build():
     parser.add_argument('--overlay', type=Path)
     parser.add_argument('--core1-mp3', type=Path)
     parser.add_argument('--core1-flac', type=Path)
+    parser.add_argument('--core1-aac', type=Path)
+    parser.add_argument('--core1-opus', type=Path)
     args = parser.parse_args()
     ELF_PATH, OUT_IMG = args.elf, args.output
     if not 138 <= args.version <= 599:
@@ -87,16 +89,22 @@ def build():
         if args.sd_output:
             (args.sd_output / 'neo_scan.bin').write_bytes(packed)
         im.d[0xC94400:0xC94400 + len(packed)] = packed
-    for source, offset in ((args.core1_mp3, 0xCB9400), (args.core1_flac, 0xCD9600)):
+    programs = [
+        (args.core1_mp3, 0xCB9400, 'neo_mp3.bin'),
+        (args.core1_flac, 0xCD9600, 'neo_flac.bin'),
+        (args.core1_aac, None, 'neo_aac.bin'),
+        (args.core1_opus, None, 'neo_opus.bin')
+    ]
+    for source, offset, name in programs:
         if source:
             program = source.read_bytes()
             if not 0 < len(program) <= 0x20000:
-                raise ValueError('Core 1 program exceeds Neo allocation')
+                raise ValueError(f'Core 1 program {name} exceeds Neo allocation ({len(program)} bytes)')
             packed = b'EC1M' + struct.pack('<III', len(program), crc32(program), 0) + bytes(496) + program
             if args.sd_output:
-                name = 'neo_mp3.bin' if offset == 0xCB9400 else 'neo_flac.bin'
                 (args.sd_output / name).write_bytes(packed)
-            im.d[offset:offset + len(packed)] = packed
+            if offset is not None:
+                im.d[offset:offset + len(packed)] = packed
 
     # Update BCD build date: 2026-10-30 (newer than 2026-10-22)
     im.set_date("20261030")

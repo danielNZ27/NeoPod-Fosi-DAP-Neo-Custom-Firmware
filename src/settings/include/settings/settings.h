@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "core/eq.h"
+#include "core/replay_gain.h"
 #include "playback/play_queue.h"
 
 typedef enum GainLevel {
@@ -43,8 +45,17 @@ enum {
     SCREEN_TIMEOUT_OPTION_COUNT = 7,
     SLEEP_TIMER_OPTION_COUNT = 7,
     AUTO_OFF_OPTION_COUNT = 4,
-    SETTINGS_FILE_SIZE = 24
+    EQ_USER_PRESET_NAME_MAX = 15,
+    EQ_USER_PRESET_CAPACITY = 8,
+    SETTINGS_FILE_SIZE = 256,
+    SETTINGS_LEGACY_FILE_SIZE = 24
 };
+
+typedef struct EqUserPreset {
+    uint8_t id;
+    char name[EQ_USER_PRESET_NAME_MAX + 1];
+    int8_t gains[EQ_BAND_COUNT];
+} EqUserPreset;
 
 typedef struct Settings {
     uint8_t brightness;
@@ -58,9 +69,20 @@ typedef struct Settings {
     uint8_t auto_off;
     UsbMode usb_mode;
     uint8_t dac_volume;
+    bool eq_enabled;
+    uint8_t eq_preset;
+    int8_t eq_gains[EQ_BAND_COUNT];
+    uint8_t eq_user_preset_count;
+    EqUserPreset eq_user_presets[EQ_USER_PRESET_CAPACITY];
+    ReplayGainMode replay_gain_mode;
 } Settings;
 
 Settings settings_defaults(void);
+const char *settings_preset_name(const Settings *settings, uint8_t preset_id);
+int settings_find_user_preset_by_id(const Settings *settings, uint8_t id);
+int settings_find_user_preset_by_name(const Settings *settings, const char *name);
+bool settings_save_user_preset(Settings *settings, const char *name, const int8_t *gains);
+bool settings_delete_user_preset(Settings *settings, uint8_t id);
 uint32_t settings_timeout_option_seconds(int option);
 uint32_t settings_sleep_option_minutes(int option);
 uint32_t settings_screen_timeout_ms(const Settings *settings);

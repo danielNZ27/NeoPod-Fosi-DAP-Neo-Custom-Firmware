@@ -78,3 +78,6 @@ int fake_hal_audio_output(void);
 int fake_hal_usb_mode(void);
 int fake_hal_dac_volume(void);
 const uint8_t *fake_hal_file_bytes(const char *path, uint32_t *size);
+
+bool fake_hal_audio_eq_enabled(void);
+const int8_t *fake_hal_audio_eq_gains(void);
