@@ -99,7 +99,7 @@ Updating to a newer version of NeoPod is fast and does **NOT** require reverting
 - Download the new `DP3_Vxxx.IMG` file (from [`release/`](./release/)).
 - Update any matching companion decoders in `[MicroSD Card]:\.echo\` if the release includes newer companion files.
 
-### 2. Flash Directly via Rockusb Mode (5 Seconds)
+### 2. Flash Directly via Rockusb Mode
 1. Unplug the USB cable and ensure the DAP Neo is turned off (hold **Power** for 3–5 seconds until screen turns off).
 2. Press and hold **VOL +**, **VOL -**, and **Center / OK** simultaneously (do **not** touch Power).
 3. While continuing to hold those 3 buttons, plug the USB-C cable into your PC. Keep holding for 3–5 seconds, then release. The screen remains black in recovery mode.
