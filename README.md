@@ -87,7 +87,7 @@ From the [`release/`](./release/) folder in this repository, obtain:
 ### 3. Apply the Firmware
 1. Safely eject and unplug the USB-C cable from the DAP Neo.
 2. The player's stock bootloader will detect `DP3_V161.IMG` and begin the flashing process.
-3. Once completed, the player will automatically reboot directly into **NeoPod**!
+3. Once completed, the player will automatically reboot directly into **NeoPod**! (May not auto reboot. In this instance use a paperclip or pinhead to press the button next to the USB C port. just press it once, don't need to hold, then can power DAP Neo on)
 
 ---
 
@@ -108,14 +108,6 @@ Updating to a newer version of NeoPod is fast and does **NOT** require reverting
    python flash-neo.py release/DP3_V161.IMG
    ```
 5. The script flashes both firmware slots, verifies the Slot 1 header, requests a reset and checks whether the live recovery interface disconnects. If normal reset leaves it in recovery, it tries Rockchip's normal-boot/MSC reset mode. If restart cannot be confirmed, it tells you to use the pinhole reset; another flash is not needed.
-
-To try only the restart on a player already in recovery, without writing firmware:
-
-```cmd
-python flash-neo.py --reset-only
-```
-
-The reset logic is covered by mocked tests; the alternate reset mode still needs verification on the Neo.
 
 ---
 
