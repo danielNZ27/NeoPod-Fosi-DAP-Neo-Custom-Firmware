@@ -63,16 +63,23 @@ From the [`release/`](./release/) folder in this repository, obtain:
 
 ---
 
-## 🔄 Updating NeoPod (Crucial!)
+## 🔄 Updating NeoPod (Direct Flashing)
 
-> [!WARNING]
-> **If you already have NeoPod installed and want to install a newer release of NeoPod, you MUST first revert to the stock factory firmware.**
->
-> NeoPod does not run the background stock firmware update daemon. If you try to update from within NeoPod, the update image will not be detected.
->
-> **Required Update Procedure:**
-> 1. Use the **[Fosi DAP Neo Firmware Restore Tool](https://github.com/danielNZ27/Fosi-Dap-Neo-firmware-restore-tool)** to restore your player back to stock firmware via Rockusb mode.
-> 2. Once your DAP Neo boots back into the stock factory OS, follow the standard [Installation Guide](#-installation-guide-first-time-from-stock-firmware) to flash the new NeoPod version.
+Updating to a newer version of NeoPod is fast and does **NOT** require reverting to factory stock firmware:
+
+### 1. Download the New Release
+- Download the new `DP3_Vxxx.IMG` file (from [`release/`](./release/)).
+- Update any matching companion decoders in `[MicroSD Card]:\.echo\` if the release includes newer companion files.
+
+### 2. Flash Directly via Rockusb Mode (5 Seconds)
+1. Unplug the USB cable and ensure the DAP Neo is turned off (hold **Power** for 3–5 seconds until screen turns off).
+2. Press and hold **VOL +**, **VOL -**, and **Center / OK** simultaneously (do **not** touch Power).
+3. While continuing to hold those 3 buttons, plug the USB-C cable into your PC. Keep holding for 3–5 seconds, then release. The screen remains black in recovery mode.
+4. Run the flashing script:
+   ```cmd
+   python flash-neo.py release/DP3_V147.IMG
+   ```
+5. The script flashes both firmware slots directly, verifies the header, and automatically restarts your player directly into the updated NeoPod release!
 
 ---
 
