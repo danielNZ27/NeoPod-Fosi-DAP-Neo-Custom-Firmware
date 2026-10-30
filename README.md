@@ -2,6 +2,16 @@
 
 **NeoPod** is an open-source custom firmware for the **Fosi Audio DAP Neo** digital audio player. It brings a clean, retro iPod-style interface, smooth navigation, album artwork support, and bit-perfect playback powered by a dual-core audio architecture.
 
+## Screenshots
+
+Rendered from NeoPod's firmware UI at its native 240 × 320 resolution, with a different button colour selected for each screen. Cover Flow shows album artwork sampled from a local music library.
+
+| Lock screen · Teal | Home screen · Purple | Cover Flow · Blue |
+| :---: | :---: | :---: |
+| ![Lock screen with teal unlock progress](assets/screenshots/lock-teal.png) | ![Home screen with purple buttons](assets/screenshots/home-purple.png) | ![Cover Flow with album artwork and the blue theme selected](assets/screenshots/cover-flow-blue.png) |
+| **Settings menu · Green** | **Colours menu · Orange** | **Custom EQ · Pink** |
+| ![Settings menu with green buttons](assets/screenshots/settings-green.png) | ![Colours menu with Orange selected](assets/screenshots/colours-orange.png) | ![Custom EQ with pink selection and a five-band curve](assets/screenshots/custom-eq-magenta.png) |
+
 ---
 
 ## 🙏 Credits
