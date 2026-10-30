@@ -21,6 +21,16 @@ void board_power_hold(void)
                                .high = gpio_output_level(POWER_HOLD)};
     gpio_mux(POWER_HOLD, GPIO_FUNCTION_GPIO);
     gpio_output(POWER_HOLD, true);
+#ifdef ECHO_BOARD_NEO
+    /* Neo stock board init 0305328c: these output states precede LCD init.
+     * Set GPIO0.14 here so the LCD's GPIO0 shadow retains the HIGH level. */
+    gpio_mux((GpioPin){2, 8}, GPIO_FUNCTION_GPIO);
+    gpio_output((GpioPin){2, 8}, true);
+    gpio_mux((GpioPin){2, 0}, GPIO_FUNCTION_GPIO);
+    gpio_output((GpioPin){2, 0}, true);
+    gpio_mux((GpioPin){0, 14}, GPIO_FUNCTION_GPIO);
+    gpio_output((GpioPin){0, 14}, true);
+#endif
     gpio_mux(POWER_KEY, GPIO_FUNCTION_GPIO);
     gpio_input(POWER_KEY);
     register_write(GRF_PORT2_LOW_PULL, POWER_KEY_PULL_OFF);

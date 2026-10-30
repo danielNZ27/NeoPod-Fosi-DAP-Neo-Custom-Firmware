@@ -85,16 +85,27 @@ void home_art_draw(void *context, Canvas *canvas, Rect area)
 {
     const HomeArt *art = context;
     canvas_fill_rect(canvas, area, PANEL_BACKGROUND);
-    canvas_fill_rect(canvas, (Rect){area.x, area.y, 1, area.height}, art->theme->colors.divider);
+    bool is_portrait = art->theme->metrics.screen_height > art->theme->metrics.screen_width;
+    if (is_portrait) {
+        canvas_fill_rect(canvas, (Rect){area.x, area.y + area.height - 1, area.width, 1},
+                         art->theme->colors.divider);
+    } else {
+        canvas_fill_rect(canvas, (Rect){area.x, area.y, 1, area.height}, art->theme->colors.divider);
+    }
     Image cover;
     if (!art->has_album || cover_cache_full(art->covers, art->album, &cover) != COVER_LOADED) {
         return;
     }
-    int left = area.x + (area.width - COVER_FULL_SIZE) / 2;
-    int top = area.y + COVER_MARGIN_TOP;
-    Quad quad = {left, COVER_FULL_SIZE, top, COVER_FULL_SIZE, top, COVER_FULL_SIZE};
+    int size = is_portrait ? 170 : COVER_FULL_SIZE;
+    int left = area.x + (area.width - size) / 2;
+    int top = area.y + (is_portrait ? (area.height - 1 - size) / 2 : COVER_MARGIN_TOP);
+    Quad quad = {left, size, top, size, top, size};
     image_draw_quad(canvas, cover, quad);
-    int rows = area.y + area.height - (top + COVER_FULL_SIZE);
-    image_draw_reflection(canvas, cover, quad, (QuadLight){REFLECTION_LIGHT, REFLECTION_LIGHT},
-                          rows);
+    if (!is_portrait) {
+        int rows = area.y + area.height - 1 - (top + COVER_FULL_SIZE);
+        if (rows > 0) {
+            image_draw_reflection(canvas, cover, quad, (QuadLight){REFLECTION_LIGHT, REFLECTION_LIGHT},
+                                  rows);
+        }
+    }
 }

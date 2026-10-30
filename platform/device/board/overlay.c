@@ -5,10 +5,15 @@
 #include "device/image_crc.h"
 #include "emmc.h"
 #include "hal/system.h"
+#include "hal/storage.h"
 
 #define OVERLAY_BASE 0x0307A000u
 #define OVERLAY_CAPACITY 0x25000u
+#ifdef ECHO_BOARD_NEO
+#define OVERLAY_IMAGE_OFFSET 0xC94400u
+#else
 #define OVERLAY_IMAGE_OFFSET 0x200000u
+#endif
 #define OVERLAY_MAGIC 0x4C564F45u
 
 enum {
@@ -23,6 +28,7 @@ static uint32_t le32(const uint8_t *bytes)
            (uint32_t)bytes[3] << 24;
 }
 
+#ifndef ECHO_BOARD_NEO
 static bool read_overlay(uint32_t first_sector, uint32_t size)
 {
     uint8_t *target = (uint8_t *)(uintptr_t)OVERLAY_BASE;
@@ -36,9 +42,29 @@ static bool read_overlay(uint32_t first_sector, uint32_t size)
     return true;
 }
 
+#endif
+
 const void *hal_system_load_rescan_code(void)
 {
     static uint32_t header[SECTOR_BYTES / 4];
+#ifdef ECHO_BOARD_NEO
+    HalFile file;
+    if (hal_system_restart_pending() || !hal_file_open(&file, "/.echo/neo_scan.bin")) {
+        return NULL;
+    }
+    board_audio_shut_down();
+    bool loaded = hal_file_read(file, 0, header, HEADER_BYTES);
+    uint32_t size = le32((const uint8_t *)header + 4);
+    loaded = loaded && le32((const uint8_t *)header) == OVERLAY_MAGIC &&
+             size >= HEADER_BYTES && size <= OVERLAY_CAPACITY && file.size == size;
+    if (loaded) {
+        loaded = hal_file_read(file, 0, (void *)(uintptr_t)OVERLAY_BASE, size);
+    }
+    hal_file_close(&file);
+    if (!loaded) {
+        return NULL;
+    }
+#else
     EmmcInfo info;
     if (hal_system_restart_pending() || !emmc_start(&info)) {
         return NULL;
@@ -57,8 +83,9 @@ const void *hal_system_load_rescan_code(void)
     if (!read_overlay(first_sector, size)) {
         return NULL;
     }
+#endif
     const uint8_t *overlay = (const uint8_t *)(uintptr_t)OVERLAY_BASE;
-    if (image_crc_update(0, overlay + HEADER_BYTES, size - HEADER_BYTES) != le32(bytes + 8)) {
+    if (image_crc_update(0, overlay + HEADER_BYTES, size - HEADER_BYTES) != le32((const uint8_t *)header + 8)) {
         return NULL;
     }
     __asm__ volatile("dsb\n\tisb" ::: "memory");

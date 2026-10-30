@@ -291,7 +291,11 @@ static const char *error_text(ScanResult result)
     case SCAN_NO_ROOM:
         return "No room for the library on the card";
     case SCAN_NO_CODE:
+#ifdef ECHO_BOARD_NEO
+        return "Copy Neo support files to the SD card";
+#else
         return "Rescan code missing: reinstall the update";
+#endif
     case SCAN_RESTART_NEEDED:
         return "Restart the player to finish the update";
     }

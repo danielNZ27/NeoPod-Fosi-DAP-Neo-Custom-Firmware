@@ -21,7 +21,11 @@ typedef struct TransitionQueue {
 } TransitionQueue;
 
 static const KeyBinding KEY_BINDINGS[] = {
+#ifdef ECHO_NEO_SIM
+    {SDLK_UP, KEY_WHEEL_UP}, {SDLK_DOWN, KEY_WHEEL_DOWN}, {SDLK_RETURN, KEY_PLAY},
+#else
     {SDLK_UP, KEY_VOLUME_DOWN}, {SDLK_DOWN, KEY_VOLUME_UP}, {SDLK_RETURN, KEY_PLAY},
+#endif
     {SDLK_SPACE, KEY_PLAY},     {SDLK_m, KEY_MENU},         {SDLK_TAB, KEY_MENU},
     {SDLK_BACKSPACE, KEY_BACK}, {SDLK_ESCAPE, KEY_BACK},    {SDLK_p, KEY_POWER},
 };
@@ -50,6 +54,25 @@ static void enqueue(HalKeyTransition transition)
 
 void sim_input_handle_event(const SDL_Event *event)
 {
+#ifdef ECHO_NEO_SIM
+    if (event->type == SDL_MOUSEWHEEL) {
+        int direction = event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1;
+        int steps = event->wheel.y;
+        if (steps == 0) {
+            return;
+        }
+        Key key = ((steps > 0) == (direction > 0)) ? KEY_WHEEL_UP : KEY_WHEEL_DOWN;
+        uint32_t count = steps > 0 ? (uint32_t)steps : 0u - (uint32_t)steps;
+        if (count > TRANSITION_CAPACITY / 2u) {
+            count = TRANSITION_CAPACITY / 2u;
+        }
+        for (uint32_t index = 0; index < count; index++) {
+            enqueue((HalKeyTransition){key, true, event->wheel.timestamp});
+            enqueue((HalKeyTransition){key, false, event->wheel.timestamp});
+        }
+        return;
+    }
+#endif
     bool is_key_event = event->type == SDL_KEYDOWN || event->type == SDL_KEYUP;
     if (!is_key_event || event->key.repeat != 0) {
         return;

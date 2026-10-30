@@ -130,6 +130,7 @@ set(ECHO_FIRMWARE_VERSION "0.3.0" CACHE STRING "major.minor.patch written to the
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(ECHO_DEVICE_IMAGE ${CMAKE_BINARY_DIR}/HIFIEC90.IMG)
 
+if(NOT ECHO_BOARD STREQUAL "neo")
 add_custom_target(echo_device_image ALL
     COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/make_image.py
         --version ${ECHO_FIRMWARE_VERSION}
@@ -143,3 +144,5 @@ add_custom_target(echo_device_image ALL
         ${PROJECT_SOURCE_DIR}/tools/make_image.py
     VERBATIM
 )
+
+endif()

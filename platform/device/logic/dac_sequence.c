@@ -4,7 +4,11 @@
 
 enum {
     MICROSECONDS_PER_MILLISECOND = 1000,
+#ifdef ECHO_BOARD_NEO
+    CHIP_COUNT = 1,
+#else
     CHIP_COUNT = 2,
+#endif
     STATUS_MAP = 0x0F0000,
     STATUS_NOT_READY = 0x03,
     POWER_CONTROL_MAP = 0x020000,
@@ -34,8 +38,12 @@ enum {
     GAIN_LOW_VALUE = 0x10
 };
 
+#ifdef ECHO_BOARD_NEO
+static const uint8_t CHIPS[CHIP_COUNT] = {DAC_RIGHT_ADDRESS}; /* Neo stock: 0x66 */
+#else
 static const uint8_t CHIPS[CHIP_COUNT] = {DAC_LEFT_ADDRESS, DAC_RIGHT_ADDRESS};
-static const uint8_t CHANNEL_VALUES[CHIP_COUNT] = {0x07, 0x0F};
+#endif
+static const uint8_t CHANNEL_VALUES[2] = {0x07, 0x0F};
 
 static const Write AFTER_STATUS[] = {
     {0x0F0010, 0xE7}, {0x020000, 0xF6}, {0x01000C, 0x04}, {0x040010, 0x01}, {0x040011, 0x00},
@@ -47,7 +55,11 @@ static const Write BEFORE_MONO[] = {
     {0x090000, 0x02},
     {PCM_VOLUME_B, DAC_VOLUME_MUTED},
     {PCM_VOLUME_A, DAC_VOLUME_MUTED},
+#ifdef ECHO_BOARD_NEO
+    {0x090003, 0xAC}, /* Neo stock PCM path signal control */
+#else
     {0x090003, 0xEC},
+#endif
     {0x090004, 0x00},
 };
 
@@ -99,7 +111,13 @@ static bool write_channel_values(const DacBus *bus)
     for (int chip = 0; chip < CHIP_COUNT; chip++) {
         uint8_t value = CHANNEL_VALUES[chip];
         if (!bus->write(bus->context, CHIPS[chip], 0x05000A, value) ||
-            !bus->write(bus->context, CHIPS[chip], 0x05000B, value)) {
+            !bus->write(bus->context, CHIPS[chip], 0x05000B,
+#ifdef ECHO_BOARD_NEO
+                        CHANNEL_VALUES[1]
+#else
+                        value
+#endif
+                        )) {
             return false;
         }
     }
@@ -108,6 +126,10 @@ static bool write_channel_values(const DacBus *bus)
 
 static bool write_mono_table(const DacBus *bus)
 {
+#ifdef ECHO_BOARD_NEO
+    (void)bus; (void)MONO_VALUES; (void)MONO_OFFSETS;
+    return true; /* single stereo CS43198: no dual-mono programming */
+#else
     for (uint32_t group = 0; group < MONO_GROUPS; group++) {
         for (int item = 0; item < MONO_ITEMS; item++) {
             uint32_t map = 0x180000u + group * 0x10u + MONO_OFFSETS[item];
@@ -117,6 +139,7 @@ static bool write_mono_table(const DacBus *bus)
         }
     }
     return true;
+#endif
 }
 
 static bool release_power_bit(const DacBus *bus, uint8_t bit)
@@ -149,6 +172,22 @@ void dac_power_pins(const DacBus *bus)
 {
     set_pin(bus, DAC_PIN_MUTE, true);
     set_pin(bus, DAC_PIN_ENABLE_A, true);
+#ifdef ECHO_BOARD_NEO
+    /* Stock playback overlays mod11 0307ea46..0307ead4 and mod33
+     * 03089e5c..03089ef0 perform this BEFORE the common DAC routine.
+     * These are observed board levels, not assumptions about reset polarity. */
+    set_pin(bus, DAC_PIN_AMP, true);
+    set_pin(bus, DAC_PIN_RESET, true);
+    set_pin(bus, DAC_PIN_AMP, false);
+    set_pin(bus, DAC_PIN_ENABLE_B, true);
+    wait_ms(bus, 2);
+    wait_ms(bus, 1);
+    wait_ms(bus, 8);
+    set_pin(bus, DAC_PIN_RESET, false);
+    /* Common stock routine 03051a62..03051a7c then raises GPIO1.4. */
+    set_pin(bus, DAC_PIN_AMP, true);
+    wait_ms(bus, 20);
+#else
     set_pin(bus, DAC_PIN_ENABLE_B, true);
     wait_ms(bus, 2);
     set_pin(bus, DAC_PIN_RESET, false);
@@ -157,11 +196,18 @@ void dac_power_pins(const DacBus *bus)
     wait_ms(bus, 8);
     set_pin(bus, DAC_PIN_RESET, false);
     wait_ms(bus, 2);
+#endif
 }
 
 bool dac_probe(const DacBus *bus)
 {
+#ifdef ECHO_BOARD_NEO
+    uint8_t id = 0xFF;
+    /* Read the device ID; do not write an undocumented page-0 register. */
+    return bus->read(bus->context, CHIPS[0], 0x010000, &id);
+#else
     return write_both(bus, 0x000000, 0x00);
+#endif
 }
 
 static bool start_up(const DacBus *bus)

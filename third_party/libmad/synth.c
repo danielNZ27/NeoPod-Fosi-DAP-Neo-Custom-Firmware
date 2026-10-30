@@ -635,25 +635,25 @@ void synth_full(struct mad_synth *synth, struct mad_frame const *frame,
 
 	*pcm1++ = SHIFT(MLZ(hi, lo));
 
-	ptr = *Dptr - pe;
-	ML0(hi, lo, (*fe)[0], ptr[31 - 16]);
-	MLA(hi, lo, (*fe)[1], ptr[31 - 14]);
-	MLA(hi, lo, (*fe)[2], ptr[31 - 12]);
-	MLA(hi, lo, (*fe)[3], ptr[31 - 10]);
-	MLA(hi, lo, (*fe)[4], ptr[31 -  8]);
-	MLA(hi, lo, (*fe)[5], ptr[31 -  6]);
-	MLA(hi, lo, (*fe)[6], ptr[31 -  4]);
-	MLA(hi, lo, (*fe)[7], ptr[31 -  2]);
+	ptr = *Dptr + (15 - pe);
+	ML0(hi, lo, (*fe)[0], ptr[16 - 16]);
+	MLA(hi, lo, (*fe)[1], ptr[16 - 14]);
+	MLA(hi, lo, (*fe)[2], ptr[16 - 12]);
+	MLA(hi, lo, (*fe)[3], ptr[16 - 10]);
+	MLA(hi, lo, (*fe)[4], ptr[16 -  8]);
+	MLA(hi, lo, (*fe)[5], ptr[16 -  6]);
+	MLA(hi, lo, (*fe)[6], ptr[16 -  4]);
+	MLA(hi, lo, (*fe)[7], ptr[16 -  2]);
 
-	ptr = *Dptr - po;
-	MLA(hi, lo, (*fo)[7], ptr[31 -  2]);
-	MLA(hi, lo, (*fo)[6], ptr[31 -  4]);
-	MLA(hi, lo, (*fo)[5], ptr[31 -  6]);
-	MLA(hi, lo, (*fo)[4], ptr[31 -  8]);
-	MLA(hi, lo, (*fo)[3], ptr[31 - 10]);
-	MLA(hi, lo, (*fo)[2], ptr[31 - 12]);
-	MLA(hi, lo, (*fo)[1], ptr[31 - 14]);
-	MLA(hi, lo, (*fo)[0], ptr[31 - 16]);
+	ptr = *Dptr + (15 - po);
+	MLA(hi, lo, (*fo)[7], ptr[16 -  2]);
+	MLA(hi, lo, (*fo)[6], ptr[16 -  4]);
+	MLA(hi, lo, (*fo)[5], ptr[16 -  6]);
+	MLA(hi, lo, (*fo)[4], ptr[16 -  8]);
+	MLA(hi, lo, (*fo)[3], ptr[16 - 10]);
+	MLA(hi, lo, (*fo)[2], ptr[16 - 12]);
+	MLA(hi, lo, (*fo)[1], ptr[16 - 14]);
+	MLA(hi, lo, (*fo)[0], ptr[16 - 16]);
 
 	*pcm2-- = SHIFT(MLZ(hi, lo));
 
@@ -773,25 +773,25 @@ void synth_half(struct mad_synth *synth, struct mad_frame const *frame,
 
 	  *pcm1++ = SHIFT(MLZ(hi, lo));
 
-	  ptr = *Dptr - po;
-	  ML0(hi, lo, (*fo)[7], ptr[31 -  2]);
-	  MLA(hi, lo, (*fo)[6], ptr[31 -  4]);
-	  MLA(hi, lo, (*fo)[5], ptr[31 -  6]);
-	  MLA(hi, lo, (*fo)[4], ptr[31 -  8]);
-	  MLA(hi, lo, (*fo)[3], ptr[31 - 10]);
-	  MLA(hi, lo, (*fo)[2], ptr[31 - 12]);
-	  MLA(hi, lo, (*fo)[1], ptr[31 - 14]);
-	  MLA(hi, lo, (*fo)[0], ptr[31 - 16]);
+	  ptr = *Dptr + (15 - po);
+	  ML0(hi, lo, (*fo)[7], ptr[16 -  2]);
+	  MLA(hi, lo, (*fo)[6], ptr[16 -  4]);
+	  MLA(hi, lo, (*fo)[5], ptr[16 -  6]);
+	  MLA(hi, lo, (*fo)[4], ptr[16 -  8]);
+	  MLA(hi, lo, (*fo)[3], ptr[16 - 10]);
+	  MLA(hi, lo, (*fo)[2], ptr[16 - 12]);
+	  MLA(hi, lo, (*fo)[1], ptr[16 - 14]);
+	  MLA(hi, lo, (*fo)[0], ptr[16 - 16]);
 
-	  ptr = *Dptr - pe;
-	  MLA(hi, lo, (*fe)[0], ptr[31 - 16]);
-	  MLA(hi, lo, (*fe)[1], ptr[31 - 14]);
-	  MLA(hi, lo, (*fe)[2], ptr[31 - 12]);
-	  MLA(hi, lo, (*fe)[3], ptr[31 - 10]);
-	  MLA(hi, lo, (*fe)[4], ptr[31 -  8]);
-	  MLA(hi, lo, (*fe)[5], ptr[31 -  6]);
-	  MLA(hi, lo, (*fe)[6], ptr[31 -  4]);
-	  MLA(hi, lo, (*fe)[7], ptr[31 -  2]);
+	  ptr = *Dptr + (15 - pe);
+	  MLA(hi, lo, (*fe)[0], ptr[16 - 16]);
+	  MLA(hi, lo, (*fe)[1], ptr[16 - 14]);
+	  MLA(hi, lo, (*fe)[2], ptr[16 - 12]);
+	  MLA(hi, lo, (*fe)[3], ptr[16 - 10]);
+	  MLA(hi, lo, (*fe)[4], ptr[16 -  8]);
+	  MLA(hi, lo, (*fe)[5], ptr[16 -  6]);
+	  MLA(hi, lo, (*fe)[6], ptr[16 -  4]);
+	  MLA(hi, lo, (*fe)[7], ptr[16 -  2]);
 
 	  *pcm2-- = SHIFT(MLZ(hi, lo));
 	}

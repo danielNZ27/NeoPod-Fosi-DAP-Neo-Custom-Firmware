@@ -20,8 +20,13 @@ enum {
     REPLY_TIMEOUT_MS = 200,
     MICROSECONDS_PER_SECOND = 1000000,
     SECTOR_BYTES = 512,
+#ifdef ECHO_BOARD_NEO
+    MP3_PROGRAM_OFFSET = 0xCB9400,
+    FLAC_PROGRAM_OFFSET = 0xCD9600,
+#else
     MP3_PROGRAM_OFFSET = 0x240000,
     FLAC_PROGRAM_OFFSET = 0x280000,
+#endif
     PROGRAM_MAGIC = 0x4D314345,
     STAGING_SECTORS = STAGING_WORDS * WORD_BYTES / SECTOR_BYTES
 };
@@ -86,6 +91,7 @@ static uint32_t le32(const uint8_t *bytes)
            (uint32_t)bytes[3] << 24;
 }
 
+#ifndef ECHO_BOARD_NEO
 static bool copy_program_sectors(uint32_t first_sector, uint32_t size, uint32_t expected_crc)
 {
     uint32_t crc = 0;
@@ -103,8 +109,40 @@ static bool copy_program_sectors(uint32_t first_sector, uint32_t size, uint32_t 
     return crc == expected_crc;
 }
 
+#endif
+
 static Core1Result place_program(Core1Program program)
 {
+#ifdef ECHO_BOARD_NEO
+    HalFile file;
+    const char *path = program == CORE1_PROGRAM_MP3 ? "/.echo/neo_mp3.bin" : "/.echo/neo_flac.bin";
+    if (hal_system_restart_pending() || !hal_file_open(&file, path)) {
+        return CORE1_NO_REPLY;
+    }
+    bool loaded = hal_file_read(file, 0, staging, SECTOR_BYTES);
+    const uint8_t *header = (const uint8_t *)staging;
+    uint32_t size = le32(header + 4);
+    uint32_t expected_crc = le32(header + 8);
+    loaded = loaded && le32(header) == PROGRAM_MAGIC && size > 0 &&
+             size <= CORE1_CODE_BYTES && file.size == SECTOR_BYTES + size;
+    core1_hold(&BUS);
+    uint32_t crc = 0;
+    for (uint32_t done = 0; loaded && done < size; done += sizeof staging) {
+        uint32_t chunk = size - done < sizeof staging ? size - done : (uint32_t)sizeof staging;
+        loaded = hal_file_read(file, SECTOR_BYTES + done, staging, chunk);
+        if (!loaded) {
+            break;
+        }
+        crc = image_crc_update(crc, (const uint8_t *)staging, chunk);
+        for (uint32_t word = 0; word * WORD_BYTES < chunk; word++) {
+            register_write(CORE1_CODE_BASE + done + word * WORD_BYTES, staging[word]);
+        }
+    }
+    hal_file_close(&file);
+    if (!loaded || crc != expected_crc) {
+        return CORE1_BAD_REPLY;
+    }
+#else
     EmmcInfo info;
     if (hal_system_restart_pending() || !emmc_start(&info)) {
         return CORE1_NO_REPLY;
@@ -124,6 +162,7 @@ static Core1Result place_program(Core1Program program)
     if (!copy_program_sectors(header_sector + 1, size, crc)) {
         return CORE1_BAD_REPLY;
     }
+    #endif
     core1_prepare(&BUS);
     return CORE1_OK;
 }

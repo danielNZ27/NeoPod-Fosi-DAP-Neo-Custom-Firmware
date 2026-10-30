@@ -191,7 +191,13 @@ bool emmc_write(void *context, uint32_t lba, uint32_t count, const void *buffer)
     if (!started || !emmc_layout_allows_write(&emmc.layout, lba, count)) {
         return false;
     }
+#ifdef ECHO_BOARD_NEO
+    (void)WRITER;
+    (void)buffer;
+    return false;
+#else
     return card_write(&WRITER, lba, count, buffer);
+#endif
 }
 
 uint32_t emmc_fifo_depth_words(void)
@@ -223,6 +229,10 @@ bool emmc_volume_write(void *context, uint32_t lba, uint32_t count, const void *
 
 bool emmc_start(EmmcInfo *info)
 {
+#ifdef ECHO_BOARD_NEO
+    *info = (EmmcInfo){0};
+    return false; /* Keep the unverified internal controller/pinmux untouched. */
+#endif
     if (!started) {
         power_controller();
         started = identify() && select_and_widen();

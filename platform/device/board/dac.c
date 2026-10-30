@@ -125,11 +125,33 @@ static const AudioRate RATES[] = {
 static const GpioPin I2C_PINS[] = {{2, 10}, {2, 11}};
 static const GpioPin I2S_PINS[] = {{1, 0}, {1, 1}, {1, 2}, {1, 3}};
 static const GpioPin DAC_PINS[] = {
+#ifdef ECHO_BOARD_NEO
+    [DAC_PIN_MUTE] = {2, 8}, [DAC_PIN_ENABLE_A] = {2, 0}, [DAC_PIN_ENABLE_B] = {2, 2},
+#else
     [DAC_PIN_MUTE] = {2, 0},  [DAC_PIN_ENABLE_A] = {2, 14}, [DAC_PIN_ENABLE_B] = {2, 2},
+#endif
     [DAC_PIN_RESET] = {2, 1}, [DAC_PIN_AMP] = {1, 4},
 };
 
 static HalToneDetail detail;
+static uint8_t device_id;
+static uint32_t probe_gpio1;
+static uint32_t probe_gpio2;
+static uint32_t probe_gpio2_direction;
+
+uint32_t dac_path_probe_gpio2(void) { return probe_gpio2; }
+uint32_t dac_path_probe_gpio2_direction(void) { return probe_gpio2_direction; }
+
+uint32_t dac_path_probe_gpio1(void)
+{
+    return probe_gpio1;
+}
+
+uint8_t dac_path_device_id(void)
+{
+    return device_id;
+}
+
 static uint8_t volume_value;
 static bool volume_known;
 static bool gain_high;
@@ -247,6 +269,9 @@ static bool dac_read(void *context, uint8_t address, uint32_t map, uint8_t *valu
     register_write(I2C_MRXCNT, 1);
     bool received = wait_pending(I2C_RX_DONE, I2C_STAGE_RECEIVE);
     *value = (uint8_t)register_read(I2C_RXDATA);
+    if (map == 0x010000u && received) {
+        device_id = *value;
+    }
     return i2c_stop() && received;
 }
 
@@ -431,11 +456,15 @@ static HalToneResult start_audio_path(const AudioRate *rate, uint32_t divider, u
                                       uint32_t interrupts, bool transfer)
 {
     detail = (HalToneDetail){.stage = I2C_STAGE_NONE, .pending = 0};
+    device_id = 0xFF;
     cru_gate(GATE_GPIO1, true);
     use_dac_pins_as_gpio();
     dac_power_pins(&BUS);
     start_soc_clocks();
     start_i2c();
+    probe_gpio1 = register_read(GPIO1_BASE + GPIO_DATA);
+    probe_gpio2 = register_read(GPIO2_BASE + GPIO_DATA);
+    probe_gpio2_direction = register_read(GPIO2_BASE + GPIO_DIRECTION);
     if (!dac_probe(&BUS)) {
         dac_output_off(&BUS);
         return HAL_TONE_NO_DAC;

@@ -82,6 +82,11 @@ static void update(void *context, uint32_t now_ms)
     }
 }
 
+static inline bool theme_is_portrait(const Theme *theme)
+{
+    return theme->metrics.screen_height > theme->metrics.screen_width;
+}
+
 static void draw(void *context, Canvas *canvas)
 {
     const MenuScreen *menu = context;
@@ -93,10 +98,18 @@ static void draw(void *context, Canvas *canvas)
         list_view_draw(&menu->list, canvas, content, menu->now_ms);
         return;
     }
-    Rect list = {content.x, content.y, content.width - panel->width, content.height};
-    Rect side = {list.x + list.width, content.y, panel->width, content.height};
-    list_view_draw(&menu->list, canvas, list, menu->now_ms);
-    panel->draw(panel->context, canvas, side);
+    if (theme_is_portrait(theme)) {
+        int panel_height = 180;
+        Rect top = {content.x, content.y, content.width, panel_height};
+        Rect list = {content.x, content.y + panel_height, content.width, content.height - panel_height};
+        panel->draw(panel->context, canvas, top);
+        list_view_draw(&menu->list, canvas, list, menu->now_ms);
+    } else {
+        Rect list = {content.x, content.y, content.width - panel->width, content.height};
+        Rect side = {list.x + list.width, content.y, panel->width, content.height};
+        list_view_draw(&menu->list, canvas, list, menu->now_ms);
+        panel->draw(panel->context, canvas, side);
+    }
 }
 
 Screen *menu_screen_init(MenuScreen *menu, MenuConfig config)
@@ -108,6 +121,11 @@ Screen *menu_screen_init(MenuScreen *menu, MenuConfig config)
                               .detail = item_value,
                               .opens = item_opens};
     list_view_init(&menu->list, &menu->model, config.theme, 0);
+    if (theme_is_portrait(config.theme) && config.panel.width > 0) {
+        int panel_height = 180;
+        int list_height = theme_content_area(config.theme).height - panel_height;
+        menu->list.visible_rows = list_height / config.theme->metrics.row_height;
+    }
     menu->screen = (Screen){
         .title = config.title,
         .context = menu,

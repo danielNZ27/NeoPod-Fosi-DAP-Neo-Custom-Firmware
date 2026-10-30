@@ -4,7 +4,11 @@
 #include <stdint.h>
 
 enum {
+#ifdef ECHO_BOARD_NEO
+    PANEL_FIRST_VISIBLE_ROW = 0,
+#else
     PANEL_FIRST_VISIBLE_ROW = 35,
+#endif
     PANEL_BUS_DATA_SHIFT = 16,
     PANEL_BUS_WR = 1u << 24,
     PANEL_BUS_DC = 1u << 25
@@ -12,7 +16,8 @@ enum {
 
 typedef enum PanelVariant {
     PANEL_VARIANT_A,
-    PANEL_VARIANT_B
+    PANEL_VARIANT_B,
+    PANEL_VARIANT_NEO
 } PanelVariant;
 
 typedef struct PanelBus {

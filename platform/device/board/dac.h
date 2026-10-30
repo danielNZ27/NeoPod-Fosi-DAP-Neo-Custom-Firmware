@@ -15,3 +15,9 @@ void dac_path_set_gain(bool high);
 bool dac_path_take_underrun(void);
 void dac_path_start_transfer(void);
 void dac_path_stop_transfer(void);
+
+uint8_t dac_path_device_id(void);
+
+uint32_t dac_path_probe_gpio1(void);
+uint32_t dac_path_probe_gpio2(void);
+uint32_t dac_path_probe_gpio2_direction(void);

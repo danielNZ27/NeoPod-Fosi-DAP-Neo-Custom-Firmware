@@ -55,6 +55,8 @@ static const KeyConfig KEY_CONFIG = {
             [KEY_VOLUME_UP] = KEY_BEHAVIOR_REPEAT,
             [KEY_VOLUME_DOWN] = KEY_BEHAVIOR_REPEAT,
             [KEY_PLAY] = KEY_BEHAVIOR_TAP_OR_HOLD,
+            [KEY_WHEEL_UP] = KEY_BEHAVIOR_REPEAT,
+            [KEY_WHEEL_DOWN] = KEY_BEHAVIOR_REPEAT,
             [KEY_MENU] = KEY_BEHAVIOR_TAP_OR_HOLD,
             [KEY_BACK] = KEY_BEHAVIOR_TAP_OR_HOLD,
             [KEY_POWER] = KEY_BEHAVIOR_TAP_OR_HOLD,
@@ -107,12 +109,20 @@ typedef struct AppState {
 } AppState;
 
 static AppState app;
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+static bool ok_pending;
+static uint32_t ok_deadline;
+#endif
 
 static const FadeTiming SPLASH_TIMING = {.fade_ms = 600, .hold_ms = 500, .rising = true};
 static const uint32_t SCREEN_ON_CLOCK_MHZ = 200;
 static const uint32_t IDLE_CLOCK_MHZ = 96;
 static const FadeTiming GOODBYE_TIMING = {.fade_ms = 600, .hold_ms = 400, .rising = false};
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+static const char SPLASH_TEXT[] = "NeoPod";
+#else
 static const char SPLASH_TEXT[] = "EchoPod";
+#endif
 static const char GOODBYE_TEXT[] = "Goodbye";
 static const char BATTERY_LOW_TEXT[] = "Battery low";
 static Color strip_pixels[HAL_DISPLAY_WIDTH * STRIP_HEIGHT];
@@ -314,22 +324,65 @@ static bool ignored_power_tap(KeyEvent event)
            event.gesture == KEY_GESTURE_PRESS;
 }
 
+static void dispatch_event(KeyEvent event, uint32_t now_ms)
+{
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    if (event.key == KEY_VOLUME_UP || event.key == KEY_VOLUME_DOWN) {
+        event.gesture = KEY_GESTURE_PRESS;
+    }
+#endif
+    if (ignored_power_tap(event)) {
+        return;
+    }
+    PowerKeyOutcome outcome = power_policy_key(&app.power, event, now_ms);
+    if (outcome.shutdown) {
+        shut_down(GOODBYE_TEXT);
+    } else if (outcome.background) {
+        run_background(event);
+    } else if (!outcome.consumed) {
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+        if (event.key == KEY_VOLUME_UP || event.key == KEY_VOLUME_DOWN) {
+            int delta = event.key == KEY_VOLUME_UP ? 1 : -1;
+            player_change_volume(&app.player, delta);
+            return;
+        }
+#endif
+        dispatch_to_screen(event, now_ms);
+    }
+}
+
 static void dispatch_key_events(uint32_t now_ms)
 {
     KeyEvent event;
     while (!app.powered_off && key_tracker_next_event(&app.keys, &event)) {
-        if (ignored_power_tap(event)) {
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+        if (ok_pending && deadline_reached(now_ms, ok_deadline)) {
+            ok_pending = false;
+            dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
+        }
+        if (event.key == KEY_PLAY && event.gesture == KEY_GESTURE_PRESS) {
+            if (ok_pending) {
+                ok_pending = false;
+                dispatch_event((KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, now_ms);
+            } else {
+                ok_pending = true;
+                ok_deadline = now_ms + 300u;
+            }
             continue;
         }
-        PowerKeyOutcome outcome = power_policy_key(&app.power, event, now_ms);
-        if (outcome.shutdown) {
-            shut_down(GOODBYE_TEXT);
-        } else if (outcome.background) {
-            run_background(event);
-        } else if (!outcome.consumed) {
-            dispatch_to_screen(event, now_ms);
+        if (ok_pending) {
+            ok_pending = false;
+            dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
         }
+#endif
+        dispatch_event(event, now_ms);
     }
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    if (ok_pending && deadline_reached(now_ms, ok_deadline)) {
+        ok_pending = false;
+        dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
+    }
+#endif
 }
 
 static bool battery_empty(uint32_t now_ms)
@@ -602,6 +655,9 @@ void app_start(void)
     uint32_t now_ms = hal_clock_milliseconds();
     frame_diff_init(&app.frame_diff, row_hashes, HAL_DISPLAY_HEIGHT);
     key_tracker_init(&app.keys, &KEY_CONFIG);
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    ok_pending = false;
+#endif
     frame_stats_reset(&app.frame_stats);
     frame_stats_reset(&app.update_stats);
     frame_stats_reset(&app.draw_stats);

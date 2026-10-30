@@ -116,7 +116,11 @@ static void refresh_title(void)
     char stats_text[TITLE_CAPACITY];
     char title[TITLE_CAPACITY * 2];
     format_frame_stats(stats_text, sizeof stats_text);
+#if defined(ECHO_NEO_SIM)
+    snprintf(title, sizeof title, "NeoPod | %s | %s", app_screen_title(), stats_text);
+#else
     snprintf(title, sizeof title, "EchoPod | %s | %s", app_screen_title(), stats_text);
+#endif
     sim_display_set_title(title);
 }
 

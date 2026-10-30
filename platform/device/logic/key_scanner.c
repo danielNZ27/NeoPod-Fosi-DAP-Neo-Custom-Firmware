@@ -59,3 +59,8 @@ bool key_scanner_next(KeyScanner *scanner, HalKeyTransition *transition)
     scanner->count--;
     return true;
 }
+
+void key_scanner_push_transition(KeyScanner *scanner, HalKeyTransition transition)
+{
+    push(scanner, transition);
+}

@@ -33,8 +33,24 @@ enum {
     BADGE_ICON_SIZE = 18,
     STATUS_CAPACITY = 64,
     BITRATE_CAPACITY = 24,
-    RATE_CAPACITY = 16
+    RATE_CAPACITY = 16,
+    PORTRAIT_COVER_TOP = 28,
+    PORTRAIT_TITLE_TOP = 146,
+    PORTRAIT_ARTIST_TOP = 170,
+    PORTRAIT_ALBUM_TOP = 192,
+    PORTRAIT_FORMAT_TOP = 216,
+    PORTRAIT_DETAIL_TOP = 236,
+    PORTRAIT_MODES_TOP = 258,
+    PORTRAIT_PROGRESS_TOP = 288,
+    PORTRAIT_TIMES_TOP = 296
 };
+
+static inline bool theme_is_portrait(const Theme *theme)
+{
+    return theme->metrics.screen_height > theme->metrics.screen_width;
+}
+
+static void draw_outline(Canvas *canvas, Rect area, Color color);
 
 static const char SEPARATOR[] = " \xC2\xB7 ";
 
@@ -121,8 +137,10 @@ static NowPlayingCommand scrub_command_for(KeyEvent event)
 {
     bool held = event.gesture != KEY_GESTURE_PRESS;
     switch (event.key) {
+    case KEY_WHEEL_DOWN:
     case KEY_VOLUME_UP:
         return held ? NOW_PLAYING_SCRUB_FORWARD_FAST : NOW_PLAYING_SCRUB_FORWARD;
+    case KEY_WHEEL_UP:
     case KEY_VOLUME_DOWN:
         return held ? NOW_PLAYING_SCRUB_BACK_FAST : NOW_PLAYING_SCRUB_BACK;
     case KEY_PLAY:
@@ -142,8 +160,10 @@ NowPlayingCommand now_playing_command_for(KeyEvent event, bool scrubbing)
         return scrub_command_for(event);
     }
     switch (event.key) {
+    case KEY_WHEEL_DOWN:
     case KEY_VOLUME_UP:
         return by_gesture(event.gesture, NOW_PLAYING_VOLUME_UP, NOW_PLAYING_NEXT);
+    case KEY_WHEEL_UP:
     case KEY_VOLUME_DOWN:
         return by_gesture(event.gesture, NOW_PLAYING_VOLUME_DOWN, NOW_PLAYING_PREVIOUS);
     case KEY_PLAY:
@@ -327,6 +347,105 @@ static void refresh(NowPlayingScreen *now_playing, uint32_t now_ms)
 static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
 {
     NowPlayingScreen *now_playing = context;
+    const Theme *theme = now_playing->config.theme;
+    bool is_portrait = theme_is_portrait(theme);
+
+    if (is_portrait && !now_playing->scrubbing) {
+        bool controls_visible = now_playing->controls_active && (now_ms < now_playing->controls_active_until_ms);
+
+        if (now_playing->volume_mode) {
+            if (event.key == KEY_WHEEL_DOWN || event.key == KEY_VOLUME_UP) {
+                player_change_volume(now_playing->config.player, 1);
+                now_playing->controls_active_until_ms = now_ms + 2000;
+                now_playing->feedback = NOW_PLAYING_FEEDBACK_VOLUME;
+                now_playing->feedback_started_ms = now_ms;
+                refresh(now_playing, now_ms);
+                return screen_action_none();
+            }
+            if (event.key == KEY_WHEEL_UP || event.key == KEY_VOLUME_DOWN) {
+                player_change_volume(now_playing->config.player, -1);
+                now_playing->controls_active_until_ms = now_ms + 2000;
+                now_playing->feedback = NOW_PLAYING_FEEDBACK_VOLUME;
+                now_playing->feedback_started_ms = now_ms;
+                refresh(now_playing, now_ms);
+                return screen_action_none();
+            }
+            if (event.key == KEY_PLAY) {
+                now_playing->volume_mode = false;
+                now_playing->controls_active_until_ms = now_ms + 2000;
+                refresh(now_playing, now_ms);
+                return screen_action_none();
+            }
+            if (event.key == KEY_BACK) {
+                now_playing->volume_mode = false;
+                now_playing->controls_active = false;
+                refresh(now_playing, now_ms);
+                return screen_action_none();
+            }
+        }
+
+        if (event.key == KEY_WHEEL_DOWN || event.key == KEY_VOLUME_UP) {
+            if (!controls_visible) {
+                now_playing->controls_active = true;
+            } else {
+                now_playing->selected_button = (uint8_t)((now_playing->selected_button + 1) % 4);
+            }
+            now_playing->controls_active_until_ms = now_ms + 2000;
+            refresh(now_playing, now_ms);
+            return screen_action_none();
+        }
+        if (event.key == KEY_WHEEL_UP || event.key == KEY_VOLUME_DOWN) {
+            if (!controls_visible) {
+                now_playing->controls_active = true;
+            } else {
+                now_playing->selected_button = (uint8_t)((now_playing->selected_button + 3) % 4);
+            }
+            now_playing->controls_active_until_ms = now_ms + 2000;
+            refresh(now_playing, now_ms);
+            return screen_action_none();
+        }
+
+        if (event.key == KEY_PLAY) {
+            if (event.gesture == KEY_GESTURE_LONG_PRESS) {
+                start_scrub(now_playing);
+                refresh(now_playing, now_ms);
+                return screen_action_none();
+            }
+            if (controls_visible) {
+                switch (now_playing->selected_button) {
+                case 0:
+                    player_skip(now_playing->config.player, -1);
+                    now_playing->feedback = NOW_PLAYING_FEEDBACK_PREVIOUS;
+                    now_playing->feedback_started_ms = now_ms;
+                    break;
+                case 1:
+                    player_toggle_pause(now_playing->config.player);
+                    break;
+                case 2:
+                    player_skip(now_playing->config.player, 1);
+                    now_playing->feedback = NOW_PLAYING_FEEDBACK_NEXT;
+                    now_playing->feedback_started_ms = now_ms;
+                    break;
+                case 3:
+                    now_playing->volume_mode = true;
+                    now_playing->controls_active_until_ms = now_ms + 2000;
+                    now_playing->feedback = NOW_PLAYING_FEEDBACK_VOLUME;
+                    now_playing->feedback_started_ms = now_ms;
+                    break;
+                default:
+                    break;
+                }
+                now_playing->controls_active_until_ms = now_ms + 2000;
+                refresh(now_playing, now_ms);
+                return screen_action_none();
+            } else {
+                player_toggle_pause(now_playing->config.player);
+                refresh(now_playing, now_ms);
+                return screen_action_none();
+            }
+        }
+    }
+
     NowPlayingCommand command = now_playing_command_for(event, now_playing->scrubbing);
     ScreenAction action = run_command(now_playing, command);
     refresh(now_playing, now_ms);
@@ -343,6 +462,9 @@ static void enter(void *context, uint32_t now_ms)
     NowPlayingScreen *now_playing = context;
     now_playing->has_text = false;
     now_playing->scrubbing = false;
+    now_playing->controls_active = false;
+    now_playing->volume_mode = false;
+    now_playing->controls_active_until_ms = 0;
     now_playing->feedback = NOW_PLAYING_FEEDBACK_NONE;
     refresh(now_playing, now_ms);
 }
@@ -358,6 +480,11 @@ static void update(void *context, uint32_t now_ms)
 {
     NowPlayingScreen *now_playing = context;
     refresh(now_playing, now_ms);
+    if ((now_playing->controls_active || now_playing->volume_mode) &&
+        now_ms >= now_playing->controls_active_until_ms) {
+        now_playing->controls_active = false;
+        now_playing->volume_mode = false;
+    }
     if (now_playing->config.covers != NULL && now_playing->status.has_track) {
         cover_cache_load_full(now_playing->config.covers, now_playing->album_index);
     }
@@ -386,14 +513,23 @@ static Rect column_area(const NowPlayingScreen *now_playing, int top, int height
 
 static void draw_cover(const NowPlayingScreen *now_playing, Canvas *canvas)
 {
+    const Theme *theme = now_playing->config.theme;
+    bool is_portrait = theme_is_portrait(theme);
+    int left = is_portrait ? (theme->metrics.screen_width - COVER_FULL_SIZE) / 2
+                           : theme->metrics.padding;
+    int top = is_portrait ? PORTRAIT_COVER_TOP : COVER_TOP;
     Image cover;
     if (!current_cover(now_playing, &cover)) {
+        if (is_portrait) {
+            Rect box = {left, top, COVER_FULL_SIZE, COVER_FULL_SIZE};
+            canvas_fill_rect(canvas, box, theme->colors.header_background);
+            draw_outline(canvas, box, theme->colors.divider);
+        }
         return;
     }
-    int left = now_playing->config.theme->metrics.padding;
     image_draw_quad(
         canvas, cover,
-        (Quad){left, COVER_FULL_SIZE, COVER_TOP, COVER_FULL_SIZE, COVER_TOP, COVER_FULL_SIZE});
+        (Quad){left, COVER_FULL_SIZE, top, COVER_FULL_SIZE, top, COVER_FULL_SIZE});
 }
 
 static Rect line_area(const Theme *theme, int top, int height)
@@ -403,10 +539,14 @@ static Rect line_area(const Theme *theme, int top, int height)
 }
 
 static void draw_text_line(const NowPlayingScreen *now_playing, Canvas *canvas, Label label,
-                           TextStyle style)
+                           TextStyle style, bool center)
 {
     int width = text_width(style.font, label.text);
     if (width <= label.area.width) {
+        if (center) {
+            label.area.x += (label.area.width - width) / 2;
+            label.area.width = width;
+        }
         label_draw(canvas, style, label);
         return;
     }
@@ -419,19 +559,37 @@ static void draw_text_line(const NowPlayingScreen *now_playing, Canvas *canvas, 
 static void draw_track_text(const NowPlayingScreen *now_playing, Canvas *canvas)
 {
     const Theme *theme = now_playing->config.theme;
+    bool is_portrait = theme_is_portrait(theme);
     TextStyle title = {.font = theme->fonts.title, .color = theme->colors.text};
     TextStyle artist = {.font = theme->fonts.body, .color = theme->colors.text_secondary};
     TextStyle album = {.font = theme->fonts.body, .color = theme->colors.text_tertiary};
-    draw_text_line(
-        now_playing, canvas,
-        (Label){column_area(now_playing, TITLE_TOP, TEXT_LINE_HEIGHT), now_playing->title}, title);
-    draw_text_line(
-        now_playing, canvas,
-        (Label){column_area(now_playing, ARTIST_TOP, TEXT_LINE_HEIGHT), now_playing->artist},
-        artist);
-    draw_text_line(
-        now_playing, canvas,
-        (Label){column_area(now_playing, ALBUM_TOP, TEXT_LINE_HEIGHT), now_playing->album}, album);
+    if (is_portrait) {
+        draw_text_line(
+            now_playing, canvas,
+            (Label){line_area(theme, PORTRAIT_TITLE_TOP, TEXT_LINE_HEIGHT), now_playing->title},
+            title, true);
+        draw_text_line(
+            now_playing, canvas,
+            (Label){line_area(theme, PORTRAIT_ARTIST_TOP, TEXT_LINE_HEIGHT), now_playing->artist},
+            artist, true);
+        draw_text_line(
+            now_playing, canvas,
+            (Label){line_area(theme, PORTRAIT_ALBUM_TOP, TEXT_LINE_HEIGHT), now_playing->album},
+            album, true);
+    } else {
+        draw_text_line(
+            now_playing, canvas,
+            (Label){column_area(now_playing, TITLE_TOP, TEXT_LINE_HEIGHT), now_playing->title},
+            title, false);
+        draw_text_line(
+            now_playing, canvas,
+            (Label){column_area(now_playing, ARTIST_TOP, TEXT_LINE_HEIGHT), now_playing->artist},
+            artist, false);
+        draw_text_line(
+            now_playing, canvas,
+            (Label){column_area(now_playing, ALBUM_TOP, TEXT_LINE_HEIGHT), now_playing->album},
+            album, false);
+    }
 }
 
 static uint32_t shown_position(const NowPlayingScreen *now_playing)
@@ -443,8 +601,10 @@ static uint32_t shown_position(const NowPlayingScreen *now_playing)
 static void draw_progress(const NowPlayingScreen *now_playing, Canvas *canvas)
 {
     const Theme *theme = now_playing->config.theme;
-    Rect bar = line_area(theme, PROGRESS_TOP, PROGRESS_HEIGHT);
-    bool volume = showing(now_playing, NOW_PLAYING_FEEDBACK_VOLUME);
+    bool is_portrait = theme_is_portrait(theme);
+    int top = is_portrait ? PORTRAIT_PROGRESS_TOP : PROGRESS_TOP;
+    Rect bar = line_area(theme, top, PROGRESS_HEIGHT);
+    bool volume = now_playing->volume_mode || showing(now_playing, NOW_PLAYING_FEEDBACK_VOLUME);
     int filled = volume ? now_playing_volume_width(now_playing->status.volume, bar.width)
                         : now_playing_progress_width(shown_position(now_playing),
                                                      now_playing->status.duration_ms, bar.width);
@@ -471,13 +631,15 @@ static void draw_times(const NowPlayingScreen *now_playing, Canvas *canvas)
     char remaining[TIME_CAPACITY] = "-";
     format_duration(position_ms, elapsed, sizeof elapsed);
     format_duration(remaining_ms, remaining + 1, sizeof remaining - 1);
-    if (showing(now_playing, NOW_PLAYING_FEEDBACK_VOLUME)) {
+    if (now_playing->volume_mode || showing(now_playing, NOW_PLAYING_FEEDBACK_VOLUME)) {
         StringBuilder label = string_builder_make(elapsed, sizeof elapsed);
         string_builder_append(&label, "Volume");
         StringBuilder level = string_builder_make(remaining, sizeof remaining);
         string_builder_append_unsigned(&level, now_playing->status.volume);
     }
-    Rect area = line_area(theme, TIMES_TOP, SMALL_LINE_HEIGHT);
+    bool is_portrait = theme_is_portrait(theme);
+    int top = is_portrait ? PORTRAIT_TIMES_TOP : TIMES_TOP;
+    Rect area = line_area(theme, top, SMALL_LINE_HEIGHT);
     TextStyle style = {.font = theme->fonts.small, .color = theme->colors.text_secondary};
     label_draw(canvas, style, (Label){.area = area, .text = elapsed});
     draw_right_aligned(canvas, style, area, remaining);
@@ -511,36 +673,63 @@ static void draw_format(const NowPlayingScreen *now_playing, Canvas *canvas)
     if (codec[0] == '\0') {
         return;
     }
+    bool is_portrait = theme_is_portrait(theme);
     TextStyle style = {.font = theme->fonts.small, .color = theme->colors.text_secondary};
-    Rect row = column_area(now_playing, FORMAT_TOP, SMALL_LINE_HEIGHT);
+    Rect row = is_portrait ? line_area(theme, PORTRAIT_FORMAT_TOP, SMALL_LINE_HEIGHT)
+                           : column_area(now_playing, FORMAT_TOP, SMALL_LINE_HEIGHT);
     int codec_width = text_width(style.font, codec) + 2 * CODEC_PADDING;
-    Rect badge = {row.x, row.y, codec_width, row.height};
+    char stream[STATUS_CAPACITY];
+    now_playing_stream_text(format, stream, sizeof stream);
+
+    int start_x = row.x;
+    if (is_portrait) {
+        int stream_width = stream[0] != '\0' ? CODEC_GAP + text_width(style.font, stream) : 0;
+        int total_width = codec_width + stream_width;
+        if (total_width < row.width) {
+            start_x = row.x + (row.width - total_width) / 2;
+        }
+    }
+
+    Rect badge = {start_x, row.y, codec_width, row.height};
     draw_outline(canvas, badge, theme->colors.text_secondary);
     Rect codec_text = label_centered_area(style.font, badge, codec);
     label_draw(canvas, style, (Label){.area = codec_text, .text = codec});
-    char stream[STATUS_CAPACITY];
-    now_playing_stream_text(format, stream, sizeof stream);
-    int stream_left = badge.x + badge.width + CODEC_GAP;
-    Rect stream_area = {stream_left, row.y, row.x + row.width - stream_left, row.height};
-    label_draw(canvas, style, (Label){.area = stream_area, .text = stream});
+    if (stream[0] != '\0') {
+        int stream_left = badge.x + badge.width + CODEC_GAP;
+        Rect stream_area = {stream_left, row.y, row.x + row.width - stream_left, row.height};
+        label_draw(canvas, style, (Label){.area = stream_area, .text = stream});
+    }
 }
 
 static void draw_details(const NowPlayingScreen *now_playing, Canvas *canvas)
 {
     const Theme *theme = now_playing->config.theme;
+    bool is_portrait = theme_is_portrait(theme);
     TextStyle style = {.font = theme->fonts.small, .color = theme->colors.text_tertiary};
     char detail[STATUS_CAPACITY];
     now_playing_detail_text(&now_playing->status, detail, sizeof detail);
-    label_draw(canvas, style,
-               (Label){column_area(now_playing, DETAIL_TOP, SMALL_LINE_HEIGHT), detail});
+    if (detail[0] != '\0') {
+        Rect area = is_portrait ? line_area(theme, PORTRAIT_DETAIL_TOP, SMALL_LINE_HEIGHT)
+                                : column_area(now_playing, DETAIL_TOP, SMALL_LINE_HEIGHT);
+        if (is_portrait) {
+            area = label_centered_area(style.font, area, detail);
+        }
+        label_draw(canvas, style, (Label){area, detail});
+    }
     char modes[STATUS_CAPACITY];
     modes_text(&now_playing->status, modes, sizeof modes);
     if (now_playing->scrubbing) {
         StringBuilder seeking = string_builder_make(modes, sizeof modes);
         string_builder_append(&seeking, "Seeking \xC2\xB7 Play to jump");
     }
-    label_draw(canvas, style,
-               (Label){column_area(now_playing, MODES_TOP, SMALL_LINE_HEIGHT), modes});
+    if (modes[0] != '\0') {
+        Rect modes_area = is_portrait ? line_area(theme, PORTRAIT_MODES_TOP, SMALL_LINE_HEIGHT)
+                                      : column_area(now_playing, MODES_TOP, SMALL_LINE_HEIGHT);
+        if (is_portrait) {
+            modes_area = label_centered_area(style.font, modes_area, modes);
+        }
+        label_draw(canvas, style, (Label){modes_area, modes});
+    }
 }
 
 static void draw_badge_icon(Canvas *canvas, NowPlayingFeedback feedback, Rect area, Color color)
@@ -567,13 +756,17 @@ static void draw_badge(const NowPlayingScreen *now_playing, Canvas *canvas)
 {
     Image cover;
     NowPlayingFeedback feedback = now_playing->feedback;
-    if (feedback == NOW_PLAYING_FEEDBACK_VOLUME || !showing(now_playing, feedback) ||
-        !current_cover(now_playing, &cover)) {
+    if (feedback == NOW_PLAYING_FEEDBACK_VOLUME || !showing(now_playing, feedback)) {
         return;
     }
     const Theme *theme = now_playing->config.theme;
-    int center_x = theme->metrics.padding + COVER_FULL_SIZE / 2;
-    int center_y = COVER_TOP + COVER_FULL_SIZE / 2;
+    bool is_portrait = theme_is_portrait(theme);
+    if (!is_portrait && !current_cover(now_playing, &cover)) {
+        return;
+    }
+    int center_x = is_portrait ? theme->metrics.screen_width / 2
+                               : theme->metrics.padding + COVER_FULL_SIZE / 2;
+    int center_y = (is_portrait ? PORTRAIT_COVER_TOP : COVER_TOP) + COVER_FULL_SIZE / 2;
     Rect badge = {center_x - BADGE_SIZE / 2, center_y - BADGE_SIZE / 2, BADGE_SIZE, BADGE_SIZE};
     Rect icon = {center_x - BADGE_ICON_SIZE / 2, center_y - BADGE_ICON_SIZE / 2, BADGE_ICON_SIZE,
                  BADGE_ICON_SIZE};
@@ -587,6 +780,109 @@ static void draw_nothing_playing(const Theme *theme, Canvas *canvas)
     Rect content = theme_content_area(theme);
     Rect area = label_centered_area(style.font, content, NOTHING_PLAYING);
     label_draw(canvas, style, (Label){.area = area, .text = NOTHING_PLAYING});
+}
+
+static void draw_rounded_pill(Canvas *canvas, Rect r, Color fill, Color border, Color top_shine)
+{
+    canvas_fill_rect(canvas, (Rect){r.x + 3, r.y, r.width - 6, r.height}, fill);
+    canvas_fill_rect(canvas, (Rect){r.x, r.y + 3, 3, r.height - 6}, fill);
+    canvas_fill_rect(canvas, (Rect){r.x + r.width - 3, r.y + 3, 3, r.height - 6}, fill);
+
+    canvas_fill_rect(canvas, (Rect){r.x + 2, r.y + 1, r.width - 4, 1}, fill);
+    canvas_fill_rect(canvas, (Rect){r.x + 1, r.y + 2, r.width - 2, 1}, fill);
+    canvas_fill_rect(canvas, (Rect){r.x + 1, r.y + r.height - 3, r.width - 2, 1}, fill);
+    canvas_fill_rect(canvas, (Rect){r.x + 2, r.y + r.height - 2, r.width - 4, 1}, fill);
+
+    canvas_fill_rect(canvas, (Rect){r.x + 2, r.y, r.width - 4, 1}, top_shine);
+    canvas_fill_rect(canvas, (Rect){r.x + 1, r.y + 1, 1, 1}, top_shine);
+    canvas_fill_rect(canvas, (Rect){r.x + r.width - 2, r.y + 1, 1, 1}, top_shine);
+
+    canvas_fill_rect(canvas, (Rect){r.x + 2, r.y + r.height - 1, r.width - 4, 1}, border);
+    canvas_fill_rect(canvas, (Rect){r.x + 1, r.y + r.height - 2, 1, 1}, border);
+    canvas_fill_rect(canvas, (Rect){r.x + r.width - 2, r.y + r.height - 2, 1, 1}, border);
+
+    canvas_fill_rect(canvas, (Rect){r.x, r.y + 3, 1, r.height - 6}, border);
+    canvas_fill_rect(canvas, (Rect){r.x + r.width - 1, r.y + 3, 1, r.height - 6}, border);
+}
+
+static void draw_modern_speaker(Canvas *canvas, Rect area, Color color)
+{
+    int cx = area.x + (area.width - 13) / 2;
+    int cy = area.y + (area.height - 10) / 2;
+    canvas_fill_rect(canvas, (Rect){cx, cy + 2, 3, 6}, color);
+    canvas_fill_rect(canvas, (Rect){cx + 3, cy + 1, 1, 8}, color);
+    canvas_fill_rect(canvas, (Rect){cx + 4, cy, 2, 10}, color);
+    canvas_fill_rect(canvas, (Rect){cx + 8, cy + 3, 1, 4}, color);
+    canvas_fill_rect(canvas, (Rect){cx + 7, cy + 2, 1, 1}, color);
+    canvas_fill_rect(canvas, (Rect){cx + 7, cy + 7, 1, 1}, color);
+    canvas_fill_rect(canvas, (Rect){cx + 11, cy + 1, 1, 8}, color);
+    canvas_fill_rect(canvas, (Rect){cx + 10, cy, 1, 1}, color);
+    canvas_fill_rect(canvas, (Rect){cx + 10, cy + 9, 1, 1}, color);
+}
+
+static void draw_controls(const NowPlayingScreen *now_playing, Canvas *canvas)
+{
+    const Theme *theme = now_playing->config.theme;
+    if (!theme_is_portrait(theme)) {
+        return;
+    }
+    bool active = now_playing->controls_active && (now_playing->now_ms < now_playing->controls_active_until_ms);
+    if (!active && !now_playing->volume_mode) {
+        return;
+    }
+
+    enum {
+        BTN_TOP = 258,
+        BTN_HEIGHT = 22,
+        BTN_SMALL_W = 36,
+        BTN_PLAY_W = 42,
+        BTN_GAP = 10,
+        BTN_START_X = 30,
+        BTN_COUNT = 4
+    };
+
+    int x = BTN_START_X;
+    for (int i = 0; i < BTN_COUNT; i++) {
+        int w = (i == 1) ? BTN_PLAY_W : BTN_SMALL_W;
+        Rect btn = {x, BTN_TOP, w, BTN_HEIGHT};
+        x += w + BTN_GAP;
+
+        bool is_sel = (now_playing->selected_button == i);
+        Color fill = is_sel ? theme->colors.selection_background : COLOR_RGB(24, 25, 31);
+        Color border = is_sel ? theme->colors.selection_top : COLOR_RGB(42, 44, 52);
+        Color shine = is_sel ? theme->colors.selection_shine : COLOR_RGB(58, 62, 74);
+        Color icon_color = is_sel ? COLOR_RGB(255, 255, 255) : COLOR_RGB(175, 180, 192);
+
+        draw_rounded_pill(canvas, btn, fill, border, shine);
+
+        switch (i) {
+        case 0: {
+            Rect icon_area = {btn.x + (btn.width - 12) / 2, btn.y + (btn.height - 10) / 2, 12, 10};
+            icon_draw_previous(canvas, icon_area, icon_color);
+            break;
+        }
+        case 1: {
+            if (now_playing->status.state == PLAYER_PLAYING) {
+                Rect icon_area = {btn.x + (btn.width - 10) / 2, btn.y + (btn.height - 10) / 2, 10, 10};
+                icon_draw_pause(canvas, icon_area, icon_color);
+            } else {
+                Rect icon_area = {btn.x + (btn.width - 10) / 2, btn.y + (btn.height - 10) / 2, 10, 10};
+                icon_draw_play(canvas, icon_area, icon_color);
+            }
+            break;
+        }
+        case 2: {
+            Rect icon_area = {btn.x + (btn.width - 12) / 2, btn.y + (btn.height - 10) / 2, 12, 10};
+            icon_draw_next(canvas, icon_area, icon_color);
+            break;
+        }
+        case 3: {
+            Rect icon_area = {btn.x + (btn.width - 13) / 2, btn.y + (btn.height - 10) / 2, 13, 10};
+            draw_modern_speaker(canvas, icon_area, icon_color);
+            break;
+        }
+        }
+    }
 }
 
 static void draw(void *context, Canvas *canvas)
@@ -605,6 +901,7 @@ static void draw(void *context, Canvas *canvas)
     draw_progress(now_playing, canvas);
     draw_format(now_playing, canvas);
     draw_details(now_playing, canvas);
+    draw_controls(now_playing, canvas);
     draw_times(now_playing, canvas);
 }
 
@@ -616,6 +913,10 @@ Screen *now_playing_screen_init(NowPlayingScreen *now_playing, NowPlayingConfig 
     now_playing->scrub_position_ms = 0;
     now_playing->feedback = NOW_PLAYING_FEEDBACK_NONE;
     now_playing->feedback_started_ms = 0;
+    now_playing->selected_button = 1;
+    now_playing->controls_active = false;
+    now_playing->volume_mode = false;
+    now_playing->controls_active_until_ms = 0;
     now_playing->status = (PlayerStatus){.state = PLAYER_IDLE};
     now_playing->screen = (Screen){
         .title = "Now Playing",

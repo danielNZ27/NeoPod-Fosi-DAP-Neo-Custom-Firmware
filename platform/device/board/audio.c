@@ -3,7 +3,9 @@
 #include <stdint.h>
 
 #include "board.h"
+#include "registers.h"
 #include "core/format.h"
+#include "core/string_builder.h"
 #include "core1_region.h"
 #include "dac.h"
 #include "device/audio_engine.h"
@@ -52,9 +54,62 @@ static uint32_t music_ring[RING_WORDS];
 static WavSource wav_source;
 static SourceKind source_kind;
 static bool unknown_format;
+static bool output_failed;
+
 static FlacSource software_source;
 static Core1Source core1_source;
 static bool using_core1;
+#ifdef ECHO_BOARD_NEO
+static uint8_t sniff_magic[4];
+static HalToneResult neo_output_result;
+static void neo_audio_log(const char *path, const char *reason)
+{
+    static char text[4096];
+    StringBuilder b = string_builder_make(text, sizeof text);
+    string_builder_append(&b, "EchoPod Neo V147 playback diagnostic\nreason=");
+    string_builder_append(&b, reason);
+    string_builder_append(&b, "\npath=");
+    string_builder_append(&b, path);
+    string_builder_append(&b, "\nmagic=");
+    for (unsigned i=0; i<4; i++) {
+        static const char hex[] = "0123456789abcdef";
+        string_builder_append_char(&b, hex[sniff_magic[i] >> 4]);
+        string_builder_append_char(&b, hex[sniff_magic[i] & 15u]);
+    }
+    string_builder_append(&b, "\ncore1=");
+    string_builder_append_unsigned(&b, using_core1 ? 1u : 0u);
+    string_builder_append(&b, "\noutput_result=");
+    string_builder_append_unsigned(&b, (uint32_t)neo_output_result);
+    HalToneDetail d = hal_audio_tone_detail();
+    string_builder_append(&b, "\ni2c_stage=");
+    string_builder_append_unsigned(&b, d.stage);
+    string_builder_append(&b, "\ni2c_pending=");
+    string_builder_append_unsigned(&b, d.pending);
+    string_builder_append(&b, "\nprobe_gpio1_output=");
+    string_builder_append_unsigned(&b, dac_path_probe_gpio1());
+    string_builder_append(&b, "\nprobe_gpio2_output=");
+    string_builder_append_unsigned(&b, dac_path_probe_gpio2());
+    string_builder_append(&b, "\nprobe_gpio2_direction=");
+    string_builder_append_unsigned(&b, dac_path_probe_gpio2_direction());
+    string_builder_append(&b, "\ndevice_id=");
+    string_builder_append_unsigned(&b, dac_path_device_id());
+    string_builder_append(&b, "\ngpio0_output=");
+    string_builder_append_unsigned(&b, register_read(GPIO0_BASE + GPIO_DATA));
+    string_builder_append(&b, "\ngpio0_direction=");
+    string_builder_append_unsigned(&b, register_read(GPIO0_BASE + GPIO_DIRECTION));
+    string_builder_append(&b, "\ngpio2_output=");
+    string_builder_append_unsigned(&b, register_read(GPIO2_BASE + GPIO_DATA));
+    string_builder_append(&b, "\ngpio2_direction=");
+    string_builder_append_unsigned(&b, register_read(GPIO2_BASE + GPIO_DIRECTION));
+    string_builder_append(&b, "\ngpio2_input=");
+    string_builder_append_unsigned(&b, register_read(GPIO2_BASE + GPIO_INPUT_LEVEL));
+    string_builder_append(&b, "\ni2c0_pin_group=");
+    string_builder_append_unsigned(&b, register_read(GRF_BASE + 0xBCu));
+    string_builder_append(&b, "\n");
+    for (size_t i=b.length; i<sizeof text; i++) text[i]='\n';
+    (void)hal_file_write("/.echo/neo-audio.txt", text, sizeof text);
+}
+#endif
 static bool resume_after_clock_change;
 static bool paused_before_clock_change;
 static uint32_t position_before_clock_change;
@@ -150,6 +205,9 @@ static SourceKind kind_of(const char *path)
     }
     uint8_t magic[SNIFF_BYTES] = {0};
     bool read = input.size >= SNIFF_BYTES && input.read(input.context, 0, magic, sizeof magic);
+#ifdef ECHO_BOARD_NEO
+    for (unsigned i=0; i<4; i++) sniff_magic[i] = magic[i];
+#endif
     close_file(NULL);
     if (!read || tag_is(magic, "fLaC")) {
         return SOURCE_FLAC;
@@ -206,7 +264,17 @@ static bool open_chosen(void *context, const char *path, uint32_t start_ms, Audi
         }
     }
     AudioSource source = chosen_source();
-    return source.open(source.context, path, start_ms, track);
+    bool opened = source.open(source.context, path, start_ms, track);
+#ifdef ECHO_BOARD_NEO
+    if (!opened && source_kind == SOURCE_FLAC && using_core1) {
+        source.close(source.context);
+        board_core1_stop();
+        using_core1 = false;
+        source = chosen_source();
+        opened = source.open(source.context, path, start_ms, track);
+    }
+#endif
+    return opened;
 }
 
 static AudioFrameResult next_chosen(void *context, AudioFrame *frame)
@@ -310,7 +378,11 @@ static bool ensure_path(uint32_t rate)
         return true;
     }
     stop_path();
-    if (dac_path_start(rate) != HAL_TONE_PLAYED) {
+    HalToneResult result = dac_path_start(rate);
+#ifdef ECHO_BOARD_NEO
+    neo_output_result = result;
+#endif
+    if (result != HAL_TONE_PLAYED) {
         return false;
     }
     path_up = true;
@@ -377,11 +449,19 @@ bool hal_audio_play(const char *path, uint32_t start_ms, uint32_t token)
     ensure_audio_clock();
     stop_tone();
     stop_transfer();
+    output_failed = false;
     if (!audio_engine_play(&engine, path, start_ms, token)) {
+#ifdef ECHO_BOARD_NEO
+        neo_audio_log(path, "file or decoder open failed");
+#endif
         return false;
     }
     if (!start_output(true)) {
+        output_failed = true;
         audio_engine_stop(&engine);
+#ifdef ECHO_BOARD_NEO
+        neo_audio_log(path, "DAC or audio output start failed");
+#endif
         return false;
     }
     return true;
@@ -504,6 +584,9 @@ static HalAudioCodec codec_of(AudioCodec codec)
 HalAudioRefusal hal_audio_refusal(void)
 {
     ensure_engine();
+    if (output_failed) {
+        return (HalAudioRefusal){.problem = HAL_AUDIO_PROBLEM_OUTPUT};
+    }
     AudioRefusal refusal = audio_engine_refusal(&engine);
     switch (refusal.problem) {
     case AUDIO_REFUSAL_RATE:

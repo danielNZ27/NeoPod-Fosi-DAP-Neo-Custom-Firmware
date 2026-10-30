@@ -4,8 +4,13 @@
 #include <stdint.h>
 
 enum {
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    HAL_DISPLAY_WIDTH = 240,
+    HAL_DISPLAY_HEIGHT = 320,
+#else
     HAL_DISPLAY_WIDTH = 320,
     HAL_DISPLAY_HEIGHT = 170,
+#endif
     HAL_DISPLAY_BRIGHTNESS_MIN = 1,
     HAL_DISPLAY_BRIGHTNESS_MAX = 10
 };

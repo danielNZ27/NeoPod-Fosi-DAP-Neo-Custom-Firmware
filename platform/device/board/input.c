@@ -18,6 +18,12 @@
 #define ADC_INTERRUPT_STATUS (1u << 6)
 
 static const GpioPin POWER_KEY = {2, 5};
+#ifdef ECHO_BOARD_NEO
+static const GpioPin OK_KEY = {2, 14};
+static const GpioPin WHEEL_A = {2, 12};
+static const GpioPin WHEEL_B = {2, 13};
+static uint8_t wheel_state;
+#endif
 
 enum {
     SCANS_PER_BATTERY_READING = 20,
@@ -41,6 +47,11 @@ static void start_conversion(uint32_t channel)
 static uint8_t pressed_keys(uint16_t reading)
 {
     uint8_t mask = key_ladder_mask(reading);
+#ifdef ECHO_BOARD_NEO
+    if (!gpio_read(OK_KEY)) {
+        mask = (uint8_t)(mask | (1u << KEY_PLAY));
+    }
+#endif
     return gpio_read(POWER_KEY) ? (uint8_t)(mask | (1u << KEY_POWER)) : mask;
 }
 
@@ -63,6 +74,15 @@ void board_input_start(void)
     gpio_mux(POWER_KEY, GPIO_FUNCTION_GPIO);
     gpio_input(POWER_KEY);
     key_scanner_init(&scanner);
+#ifdef ECHO_BOARD_NEO
+    gpio_mux(OK_KEY, GPIO_FUNCTION_GPIO);
+    gpio_input(OK_KEY);
+    gpio_mux(WHEEL_A, GPIO_FUNCTION_GPIO);
+    gpio_input(WHEEL_A);
+    gpio_mux(WHEEL_B, GPIO_FUNCTION_GPIO);
+    gpio_input(WHEEL_B);
+    wheel_state = (uint8_t)((gpio_read(WHEEL_A) ? 2u : 0u) | (gpio_read(WHEEL_B) ? 1u : 0u));
+#endif
     battery_gauge_init(&gauge);
     start_conversion(ADC_KEY_CHANNEL);
     conversion_started = true;
@@ -70,6 +90,17 @@ void board_input_start(void)
 
 void board_input_sample(uint32_t now_ms)
 {
+#ifdef ECHO_BOARD_NEO
+    static const int8_t steps[16] = {0, 1, -1, 0, -1, 0, 0, 1, 1, 0, 0, -1, 0, -1, 1, 0};
+    uint8_t state = (uint8_t)((gpio_read(WHEEL_A) ? 2u : 0u) | (gpio_read(WHEEL_B) ? 1u : 0u));
+    int8_t step = steps[(wheel_state << 2) | state];
+    wheel_state = state;
+    if (step != 0) {
+        Key key = step > 0 ? KEY_WHEEL_DOWN : KEY_WHEEL_UP;
+        key_scanner_push_transition(&scanner, (HalKeyTransition){key, true, now_ms});
+        key_scanner_push_transition(&scanner, (HalKeyTransition){key, false, now_ms});
+    }
+#endif
     if (!conversion_started) {
         return;
     }

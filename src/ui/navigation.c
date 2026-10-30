@@ -35,8 +35,10 @@ Navigation navigation_from_key(KeyEvent event)
 {
     bool repeated = event.gesture == KEY_GESTURE_REPEAT;
     switch (event.key) {
+    case KEY_WHEEL_DOWN:
     case KEY_VOLUME_UP:
         return navigation(NAVIGATION_NEXT, repeated);
+    case KEY_WHEEL_UP:
     case KEY_VOLUME_DOWN:
         return navigation(NAVIGATION_PREVIOUS, repeated);
     case KEY_PLAY:

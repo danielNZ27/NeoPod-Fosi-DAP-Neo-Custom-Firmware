@@ -27,8 +27,9 @@ static void draw(void *context, Canvas *canvas)
     TextStyle style = {.font = theme->fonts.body, .color = theme->colors.text_secondary};
     canvas_fill_rect(canvas, content, theme->colors.background);
     header_draw(canvas, theme, message->config.title);
-    Rect area = label_centered_area(style.font, content, message->config.message);
-    label_draw(canvas, style, (Label){.area = area, .text = message->config.message});
+    Rect area = {content.x + theme->metrics.padding, content.y,
+                 content.width - 2 * theme->metrics.padding, content.height};
+    label_draw_wrapped(canvas, style, area, message->config.message);
 }
 
 Screen *message_screen_init(MessageScreen *message, MessageConfig config)

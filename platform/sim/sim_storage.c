@@ -1,3 +1,9 @@
+#ifdef _WIN32
+#include <direct.h>
+#define make_dir(p) _mkdir(p)
+#else
+#define make_dir(p) mkdir(p, 0755)
+#endif
 #include "sim_storage.h"
 
 #include <dirent.h>
@@ -28,10 +34,37 @@ typedef struct SimStorage {
 
 static SimStorage storage;
 
+static char clean_card[PATH_CAPACITY];
+static char clean_system[PATH_CAPACITY];
+
+static void clean_path(const char *src, char *dst, size_t capacity)
+{
+    if (src == NULL) {
+        dst[0] = '\0';
+        return;
+    }
+    size_t len = strlen(src);
+    if (len >= capacity) {
+        len = capacity - 1;
+    }
+    memcpy(dst, src, len);
+    dst[len] = '\0';
+    while (len > 0 && (dst[len - 1] == '"' || dst[len - 1] == '\'' || dst[len - 1] == '/' || dst[len - 1] == '\\')) {
+        dst[--len] = '\0';
+    }
+}
+
 void sim_storage_configure(const char *card_directory, const char *system_directory)
 {
-    storage.card_directory = card_directory;
-    storage.system_directory = system_directory;
+    clean_path(card_directory, clean_card, sizeof clean_card);
+    clean_path(system_directory, clean_system, sizeof clean_system);
+    if (clean_system[0] == '\0' && clean_card[0] != '\0') {
+        make_dir("build");
+        make_dir("build/system");
+        snprintf(clean_system, sizeof clean_system, "build/system");
+    }
+    storage.card_directory = clean_card[0] != '\0' ? clean_card : NULL;
+    storage.system_directory = clean_system[0] != '\0' ? clean_system : NULL;
 }
 
 bool sim_storage_host_path(const char *path, char *buffer, size_t capacity)
@@ -39,10 +72,21 @@ bool sim_storage_host_path(const char *path, char *buffer, size_t capacity)
     size_t prefix_length = sizeof SYSTEM_PREFIX - 1;
     int written = -1;
     if (storage.system_directory != NULL && strncmp(path, SYSTEM_PREFIX, prefix_length) == 0) {
-        written =
-            snprintf(buffer, capacity, "%s/%s", storage.system_directory, path + prefix_length);
+        const char *rel = path + prefix_length;
+        while (*rel == '/' || *rel == '\\') {
+            rel++;
+        }
+        written = snprintf(buffer, capacity, "%s/%s", storage.system_directory, rel);
     } else if (storage.card_directory != NULL) {
-        written = snprintf(buffer, capacity, "%s%s", storage.card_directory, path);
+        if (strcmp(path, "/") == 0 || strcmp(path, "\\") == 0 || path[0] == '\0') {
+            written = snprintf(buffer, capacity, "%s", storage.card_directory);
+        } else {
+            const char *rel = path;
+            while (*rel == '/' || *rel == '\\') {
+                rel++;
+            }
+            written = snprintf(buffer, capacity, "%s/%s", storage.card_directory, rel);
+        }
     }
     return written > 0 && (size_t)written < capacity;
 }

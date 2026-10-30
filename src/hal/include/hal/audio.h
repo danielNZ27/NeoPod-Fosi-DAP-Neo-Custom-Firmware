@@ -34,7 +34,8 @@ typedef enum HalAudioProblem {
     HAL_AUDIO_PROBLEM_NONE,
     HAL_AUDIO_PROBLEM_UNREADABLE,
     HAL_AUDIO_PROBLEM_FORMAT,
-    HAL_AUDIO_PROBLEM_RATE
+    HAL_AUDIO_PROBLEM_RATE,
+    HAL_AUDIO_PROBLEM_OUTPUT
 } HalAudioProblem;
 
 typedef struct HalAudioRefusal {

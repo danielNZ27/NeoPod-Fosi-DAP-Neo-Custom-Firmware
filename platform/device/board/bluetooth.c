@@ -135,7 +135,11 @@ static void power_on(void)
 static void route_to_module(bool to_module)
 {
     gpio_output(AUDIO_MUTE, to_module);
+#ifndef ECHO_BOARD_NEO
     gpio_output(WIRED_OUTPUT, !to_module);
+#else
+    (void)WIRED_OUTPUT;
+#endif
     routed = to_module;
 }
 

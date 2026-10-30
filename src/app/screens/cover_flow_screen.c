@@ -17,8 +17,16 @@ enum {
     LINE_HEIGHT = 20,
     REFLECTION_ROWS = 34,
     REFLECTION_LIGHT = 80,
-    FLOOR_LEVEL = 16
+    FLOOR_LEVEL = 16,
+    PORTRAIT_TITLE_TOP = 264,
+    PORTRAIT_ARTIST_TOP = 288,
+    PORTRAIT_REFLECTION_ROWS = 55
 };
+
+static inline bool theme_is_portrait(const Theme *theme)
+{
+    return theme->metrics.screen_height > theme->metrics.screen_width;
+}
 
 static const CoverFlowLayout LAYOUT = {
     .center_x = 160,
@@ -31,6 +39,21 @@ static const CoverFlowLayout LAYOUT = {
     .side_far_height = 78,
     .side_near_light = 230,
     .side_far_light = 140,
+    .fade_start = 2 * COVER_FLOW_ONE,
+    .fade_end = 2 * COVER_FLOW_ONE + COVER_FLOW_ONE / 2,
+};
+
+static const CoverFlowLayout LAYOUT_PORTRAIT = {
+    .center_x = 120,
+    .center_top = 22,
+    .center_size = 150,
+    .side_offset = 96,
+    .side_spacing = 24,
+    .side_width = 44,
+    .side_near_height = 138,
+    .side_far_height = 104,
+    .side_near_light = 220,
+    .side_far_light = 130,
     .fade_start = 2 * COVER_FLOW_ONE,
     .fade_end = 2 * COVER_FLOW_ONE + COVER_FLOW_ONE / 2,
 };
@@ -284,9 +307,13 @@ static bool cover_image(const CoverFlowScreen *flow, int position, Image *image)
 
 static void draw_cover(const CoverFlowScreen *flow, Canvas *canvas, int position)
 {
+    bool is_portrait = theme_is_portrait(flow->config.theme);
+    const CoverFlowLayout *layout = is_portrait ? &LAYOUT_PORTRAIT : &LAYOUT;
+    int reflection_rows = is_portrait ? PORTRAIT_REFLECTION_ROWS : REFLECTION_ROWS;
+
     int32_t relative = (int32_t)position * COVER_FLOW_ONE - flow->position;
-    Quad quad = cover_flow_quad(&LAYOUT, relative);
-    QuadLight light = cover_flow_light(&LAYOUT, relative);
+    Quad quad = cover_flow_quad(layout, relative);
+    QuadLight light = cover_flow_light(layout, relative);
     if (light.left == 0 && light.right == 0) {
         return;
     }
@@ -298,7 +325,7 @@ static void draw_cover(const CoverFlowScreen *flow, Canvas *canvas, int position
         draw_profile_add(DRAW_PART_COVERS, reflection_us - started_us);
         QuadLight reflected = {(uint16_t)(light.left * REFLECTION_LIGHT / COLOR_LIGHT_FULL),
                                (uint16_t)(light.right * REFLECTION_LIGHT / COLOR_LIGHT_FULL)};
-        image_draw_reflection(canvas, image, quad, reflected, REFLECTION_ROWS);
+        image_draw_reflection(canvas, image, quad, reflected, reflection_rows);
         draw_profile_add(DRAW_PART_REFLECTIONS, hal_clock_microseconds() - reflection_us);
     } else {
         image_fill_quad(canvas, quad, flow->config.theme->colors.divider);
@@ -322,12 +349,15 @@ static void draw_line(const CoverFlowScreen *flow, Canvas *canvas, Label label, 
 static void draw_text(const CoverFlowScreen *flow, Canvas *canvas)
 {
     const Theme *theme = flow->config.theme;
+    bool is_portrait = theme_is_portrait(theme);
     int padding = theme->metrics.padding;
     int width = theme->metrics.screen_width - 2 * padding;
+    int title_top = is_portrait ? PORTRAIT_TITLE_TOP : TITLE_TOP;
+    int artist_top = is_portrait ? PORTRAIT_ARTIST_TOP : ARTIST_TOP;
     TextStyle title = {.font = theme->fonts.title, .color = theme->colors.text};
     TextStyle artist = {.font = theme->fonts.body, .color = theme->colors.text_secondary};
-    draw_line(flow, canvas, (Label){{padding, TITLE_TOP, width, LINE_HEIGHT}, flow->title}, title);
-    draw_line(flow, canvas, (Label){{padding, ARTIST_TOP, width, LINE_HEIGHT}, flow->artist},
+    draw_line(flow, canvas, (Label){{padding, title_top, width, LINE_HEIGHT}, flow->title}, title);
+    draw_line(flow, canvas, (Label){{padding, artist_top, width, LINE_HEIGHT}, flow->artist},
               artist);
 }
 
@@ -341,7 +371,9 @@ static void draw_empty(const Theme *theme, Canvas *canvas)
 
 static void draw_backdrop(const Theme *theme, Canvas *canvas)
 {
-    int floor = LAYOUT.center_top + LAYOUT.center_size;
+    bool is_portrait = theme_is_portrait(theme);
+    const CoverFlowLayout *layout = is_portrait ? &LAYOUT_PORTRAIT : &LAYOUT;
+    int floor = layout->center_top + layout->center_size;
     int height = theme->metrics.screen_height;
     canvas_fill_rect(canvas, (Rect){0, 0, theme->metrics.screen_width, floor}, BACKDROP);
     for (int y = floor; y < height; y++) {

@@ -6,9 +6,11 @@ typedef enum Key {
     KEY_PLAY,
     KEY_MENU,
     KEY_BACK,
-    KEY_POWER
+    KEY_POWER,
+    KEY_WHEEL_UP,
+    KEY_WHEEL_DOWN
 } Key;
 
 enum {
-    KEY_COUNT = KEY_POWER + 1
+    KEY_COUNT = KEY_WHEEL_DOWN + 1
 };

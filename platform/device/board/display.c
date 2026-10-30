@@ -244,7 +244,11 @@ void board_display_start(void)
     set_bus_idle();
     pulse_reset(RESET_SETTLE_MS);
     pulse_reset(RESET_READY_MS);
+#ifdef ECHO_BOARD_NEO
+    panel_send_init(&BUS, PANEL_VARIANT_NEO);
+#else
     panel_send_init(&BUS, PANEL_VARIANT_B);
+#endif
     board_display_clear();
 }
 

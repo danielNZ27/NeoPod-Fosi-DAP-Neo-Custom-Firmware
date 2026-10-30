@@ -631,6 +631,9 @@ void player_refusal_text(HalAudioRefusal refusal, char *text, size_t capacity)
         string_builder_append(&builder, " isn't supported yet");
         return;
     }
+    case HAL_AUDIO_PROBLEM_OUTPUT:
+        string_builder_append(&builder, "Audio hardware setup failed");
+        return;
     case HAL_AUDIO_PROBLEM_FORMAT:
         string_builder_append(&builder, "This file type isn't supported yet");
         return;
