@@ -23,11 +23,11 @@ Huge credit and gratitude go to the original EchoPod developers for creating the
 
 ## Latest release: v1.6.1
 
-[Download v1.5.2](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/tag/V1.6.1) · [Detailed changelog](CHANGELOG.md)
+[Download v1.6.1](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/tag/V1.6.1) · [Detailed changelog](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/blob/main/CHANGELOG.md)
 
-Fixes scratchy playback for FLAC files with very short blocks, adds portrait Custom EQ with wheel/OK controls, and includes AAC-LC, Opus and ReplayGain support.
+Brings high-quality 128x128 album artwork scaling with real-time bilinear interpolation, Floyd-Steinberg error-diffusion dithering, and a clean 5-category Settings menu structure (Playback, Audio, Display & Controls, Power & Sleep, System).
 
-Upgrading from v1.4.7: update the firmware **and all five matching `.echo` files**. If you already installed V151, update the firmware and matching `neo_scan.bin`; the audio decoder binaries are unchanged. Preserve existing settings, library and cover files when merging `.echo`.
+Upgrading from previous versions: update the firmware image (`DP3_V161.IMG`) and the matching `neo_scan.bin` companion in your MicroSD card's `.echo` folder. Preserve existing settings, library, and cover files when merging `.echo`.
 
 ## 🎵 Supported Audio Formats & Codecs
 
