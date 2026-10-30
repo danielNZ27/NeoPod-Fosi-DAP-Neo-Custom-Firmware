@@ -12,9 +12,14 @@
 #include "ui/toast.h"
 
 enum {
-    SETTINGS_CHOICE_COUNT = 11,
-    SETTINGS_RESCAN_ITEM = 9,
-    SETTINGS_ITEM_COUNT = SETTINGS_CHOICE_COUNT + 2
+    SETTINGS_CHOICE_COUNT = 13,
+    SETTINGS_CATEGORY_COUNT = 5,
+    SETTINGS_PLAYBACK_COUNT = 3,
+    SETTINGS_AUDIO_COUNT = 3,
+    SETTINGS_DISPLAY_COUNT = 5,
+    SETTINGS_POWER_COUNT = 2,
+    SETTINGS_SYSTEM_COUNT = 2,
+    SETTINGS_ITEM_COUNT = SETTINGS_CATEGORY_COUNT
 };
 
 typedef struct SettingsContext {
@@ -46,10 +51,20 @@ struct SettingsScreens {
     SettingsContext context;
     const Theme *theme;
     MenuScreen menu;
+    MenuScreen playback_menu;
+    MenuScreen audio_menu;
+    MenuScreen display_menu;
+    MenuScreen power_menu;
+    MenuScreen system_menu;
     ChoiceScreen choice;
     EqualizerScreen equalizer;
     SettingsEntry entries[SETTINGS_CHOICE_COUNT];
-    MenuItem items[SETTINGS_ITEM_COUNT];
+    MenuItem items[SETTINGS_CATEGORY_COUNT];
+    MenuItem playback_items[SETTINGS_PLAYBACK_COUNT];
+    MenuItem audio_items[SETTINGS_AUDIO_COUNT];
+    MenuItem display_items[SETTINGS_DISPLAY_COUNT];
+    MenuItem power_items[SETTINGS_POWER_COUNT];
+    MenuItem system_items[SETTINGS_SYSTEM_COUNT];
 };
 
 Screen *settings_screens_init(SettingsScreens *screens, SettingsContext context,

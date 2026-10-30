@@ -62,6 +62,35 @@ static Sampler sampler_at(const Column *column, const Image *image, int quad_wid
     };
 }
 
+static inline Color color_lerp(Color c1, Color c2, uint32_t w2)
+{
+    uint32_t w1 = 256u - w2;
+    uint32_t r = (((c1 >> 11) * w1 + (c2 >> 11) * w2) + 128u) >> 8;
+    uint32_t g = ((((c1 >> 5) & 0x3Fu) * w1 + ((c2 >> 5) & 0x3Fu) * w2) + 128u) >> 8;
+    uint32_t b = (((c1 & 0x1Fu) * w1 + (c2 & 0x1Fu) * w2) + 128u) >> 8;
+    return (Color)((r << 11) | (g << 5) | b);
+}
+
+static inline Color color_bilinear(const Image *image, uint32_t x0, uint32_t x1, uint32_t x_frac,
+                                   uint32_t y0, uint32_t y1, uint32_t y_frac)
+{
+    const Color *row0 = &image->pixels[y0 * (uint32_t)image->width];
+    const Color *row1 = &image->pixels[y1 * (uint32_t)image->width];
+    Color p00 = row0[x0];
+    Color p10 = row0[x1];
+    Color p01 = row1[x0];
+    Color p11 = row1[x1];
+    if (x_frac == 0 && y_frac == 0) {
+        return p00;
+    }
+    if (x_frac == 0) {
+        return color_lerp(p00, p01, y_frac);
+    }
+    Color top = color_lerp(p00, p10, x_frac);
+    Color bot = color_lerp(p01, p11, x_frac);
+    return color_lerp(top, bot, y_frac);
+}
+
 static void draw_column(Canvas *canvas, Column column, const Image *image, int quad_width)
 {
     Rect clip = canvas->clip;
@@ -74,8 +103,25 @@ static void draw_column(Canvas *canvas, Column column, const Image *image, int q
     int width = image->width;
     Sampler sampler = sampler_at(&column, image, quad_width, first - column.top);
     Color *target = pixel_address(canvas, column.x, first);
+    if (width < 32 || (quad_width == width && column.height == image->height)) {
+        for (int count = last - first; count > 0; count--) {
+            *target = sampler.column[(int)(sampler.position >> STEP_SHIFT) * width];
+            target += stride;
+            sampler.position += sampler.step;
+        }
+        return;
+    }
+    uint32_t x_num = (uint32_t)column.offset * (uint32_t)width;
+    uint32_t x0 = x_num / (uint32_t)quad_width;
+    uint32_t x_frac = ((x_num % (uint32_t)quad_width) << 8) / (uint32_t)quad_width;
+    if (x0 >= (uint32_t)width) x0 = (uint32_t)width - 1;
+    uint32_t x1 = (x0 + 1 < (uint32_t)width) ? x0 + 1 : x0;
     for (int count = last - first; count > 0; count--) {
-        *target = sampler.column[(int)(sampler.position >> STEP_SHIFT) * width];
+        uint32_t y0 = sampler.position >> STEP_SHIFT;
+        if (y0 >= (uint32_t)image->height) y0 = (uint32_t)image->height - 1;
+        uint32_t y1 = (y0 + 1 < (uint32_t)image->height) ? y0 + 1 : y0;
+        uint32_t y_frac = (sampler.position >> (STEP_SHIFT - 8)) & 0xFF;
+        *target = color_bilinear(image, x0, x1, x_frac, y0, y1, y_frac);
         target += stride;
         sampler.position += sampler.step;
     }
@@ -99,8 +145,26 @@ static void draw_lit_column(Canvas *canvas, Column column, const Image *image, i
     int width = image->width;
     Sampler sampler = sampler_at(&column, image, quad_width, first - column.top);
     Color *target = pixel_address(canvas, column.x, first);
+    if (width < 32 || (quad_width == width && column.height == image->height)) {
+        for (int count = last - first; count > 0; count--) {
+            *target = color_scale(sampler.column[(int)(sampler.position >> STEP_SHIFT) * width], light);
+            target += stride;
+            sampler.position += sampler.step;
+        }
+        return;
+    }
+    uint32_t x_num = (uint32_t)column.offset * (uint32_t)width;
+    uint32_t x0 = x_num / (uint32_t)quad_width;
+    uint32_t x_frac = ((x_num % (uint32_t)quad_width) << 8) / (uint32_t)quad_width;
+    if (x0 >= (uint32_t)width) x0 = (uint32_t)width - 1;
+    uint32_t x1 = (x0 + 1 < (uint32_t)width) ? x0 + 1 : x0;
     for (int count = last - first; count > 0; count--) {
-        *target = color_scale(sampler.column[(int)(sampler.position >> STEP_SHIFT) * width], light);
+        uint32_t y0 = sampler.position >> STEP_SHIFT;
+        if (y0 >= (uint32_t)image->height) y0 = (uint32_t)image->height - 1;
+        uint32_t y1 = (y0 + 1 < (uint32_t)image->height) ? y0 + 1 : y0;
+        uint32_t y_frac = (sampler.position >> (STEP_SHIFT - 8)) & 0xFF;
+        Color c = color_bilinear(image, x0, x1, x_frac, y0, y1, y_frac);
+        *target = color_scale(c, light);
         target += stride;
         sampler.position += sampler.step;
     }

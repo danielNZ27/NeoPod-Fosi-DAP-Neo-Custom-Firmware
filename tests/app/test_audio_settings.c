@@ -1,10 +1,12 @@
 #include <string.h>
+#include <stdio.h>
 
 #include "check.h"
 #include "core/hash.h"
 #include "default_theme.h"
 #include "fake_hal.h"
 #include "settings_screens.h"
+#include "fixture_library.h"
 
 static void put_checksum(uint8_t *bytes, int offset)
 {
@@ -64,31 +66,174 @@ static void invalid_preset_data_is_rejected(void)
     CHECK(!settings_decode(bytes, 0, &settings));
 }
 
+static const MenuItem *find_item(const SettingsScreens *screens, const char *label)
+{
+    const MenuItem *arrays[] = {
+        screens->items,
+        screens->playback_items,
+        screens->audio_items,
+        screens->display_items,
+        screens->power_items,
+        screens->system_items
+    };
+    const int counts[] = {
+        SETTINGS_CATEGORY_COUNT,
+        SETTINGS_PLAYBACK_COUNT,
+        SETTINGS_AUDIO_COUNT,
+        SETTINGS_DISPLAY_COUNT,
+        SETTINGS_POWER_COUNT,
+        SETTINGS_SYSTEM_COUNT
+    };
+    for (int a = 0; a < 6; a++) {
+        for (int i = 0; i < counts[a]; i++) {
+            if (strcmp(arrays[a][i].label, label) == 0) {
+                return &arrays[a][i];
+            }
+        }
+    }
+    return NULL;
+}
+
 static void audio_settings_are_reachable(void)
 {
     fake_hal_reset();
     SettingsStore store = {.settings = settings_defaults()};
     SettingsScreens screens;
     (void)settings_screens_init(&screens, (SettingsContext){.store = &store}, &DEFAULT_THEME);
-    int found = 0;
-    for (int i = 0; i < screens.menu.config.item_count; i++) {
-        const MenuItem *item = &screens.items[i];
-        CHECK(item->label != NULL);
-        if (strcmp(item->label, "Equalizer") == 0 || strcmp(item->label, "ReplayGain") == 0) {
-            CHECK_EQUAL(SCREEN_ACTION_PUSH, item->select(item->context).type);
-            found++;
-        }
-    }
-    CHECK_EQUAL(2, found);
+    CHECK_EQUAL(SETTINGS_CATEGORY_COUNT, screens.menu.config.item_count);
+    CHECK(find_item(&screens, "Playback") != NULL);
+    CHECK(find_item(&screens, "Audio") != NULL);
+    CHECK(find_item(&screens, "Display & Controls") != NULL);
+    CHECK(find_item(&screens, "Power & Sleep") != NULL);
+    CHECK(find_item(&screens, "System") != NULL);
+
+    const MenuItem *eq = find_item(&screens, "Equalizer");
+    const MenuItem *rg = find_item(&screens, "ReplayGain");
+    CHECK(eq != NULL);
+    CHECK(rg != NULL);
+    CHECK_EQUAL(SCREEN_ACTION_PUSH, eq->select(eq->context).type);
+    CHECK_EQUAL(SCREEN_ACTION_PUSH, rg->select(rg->context).type);
 }
 
-int main(void)
+static void button_colour_picker_applies_immediately_and_saves(void)
+{
+    fake_hal_reset();
+    SettingsStore store = {.settings = settings_defaults()};
+    static FixtureLibrary fixture;
+    Player player;
+    player_init(&player, fixture_library_open(&fixture));
+    SettingsScreens screens;
+    app_theme_apply(0);
+    Color blue = APP_THEME.colors.selection_background;
+    settings_screens_init(&screens, (SettingsContext){.store = &store, .player = &player}, &APP_THEME);
+    const MenuItem *item = find_item(&screens, "Button colour");
+    CHECK(item != NULL);
+    if (!item) return;
+    Screen *choice = item->select(item->context).target;
+    CHECK(choice != NULL);
+    if (!choice) return;
+    CHECK_EQUAL(BUTTON_COLOR_COUNT, screens.choice.config.option_count);
+    CHECK(strcmp("Blue", screens.choice.config.options[0]) == 0);
+    choice->enter(choice->context, 0);
+    choice->handle_key(choice->context, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, 10);
+    ScreenAction action = choice->handle_key(choice->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 20);
+    CHECK_EQUAL(SCREEN_ACTION_POP, action.type);
+    CHECK_EQUAL(1, store.settings.button_color);
+    CHECK(APP_THEME.colors.selection_background != blue);
+    CHECK_EQUAL(blue, DEFAULT_THEME.colors.selection_background);
+    SettingsStore restored;
+    settings_store_load(&restored);
+    CHECK_EQUAL(1, restored.settings.button_color);
+    Color colors[BUTTON_COLOR_COUNT];
+    for (uint8_t index = 0; index < BUTTON_COLOR_COUNT; index++) {
+        app_theme_apply(index);
+        colors[index] = APP_THEME.colors.selection_background;
+        for (uint8_t earlier = 0; earlier < index; earlier++)
+            CHECK(colors[earlier] != colors[index]);
+    }
+    app_theme_apply(BUTTON_COLOR_COUNT);
+    CHECK_EQUAL(blue, APP_THEME.colors.selection_background);
+}
+
+static void side_buttons_setting_offers_three_modes_and_saves_hybrid(void)
+{
+    fake_hal_reset();
+    SettingsStore store = {.settings = settings_defaults()};
+    static FixtureLibrary fixture;
+    Player player;
+    player_init(&player, fixture_library_open(&fixture));
+    SettingsScreens screens;
+    settings_screens_init(&screens, (SettingsContext){.store = &store, .player = &player}, &DEFAULT_THEME);
+    const MenuItem *item = find_item(&screens, "Side buttons");
+    CHECK(item != NULL);
+    if (!item) return;
+    Screen *choice = item->select(item->context).target;
+    CHECK(choice != NULL);
+    if (!choice) return;
+    CHECK_EQUAL(3, screens.choice.config.option_count);
+    CHECK(strcmp("Volume up/down", screens.choice.config.options[0]) == 0);
+    CHECK(strcmp("Previous/next track", screens.choice.config.options[1]) == 0);
+    CHECK(strcmp("Hybrid", screens.choice.config.options[2]) == 0);
+    choice->enter(choice->context, 0);
+    choice->handle_key(choice->context, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, 10);
+    choice->handle_key(choice->context, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, 15);
+    choice->handle_key(choice->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 20);
+    CHECK_EQUAL(SIDE_BUTTONS_HYBRID, store.settings.side_buttons);
+    SettingsStore restored;
+    settings_store_load(&restored);
+    CHECK_EQUAL(SIDE_BUTTONS_HYBRID, restored.settings.side_buttons);
+}
+
+static void render_settings_choice(const char *path, const char *label)
+{
+    fake_hal_reset();
+    SettingsStore store = {.settings = settings_defaults()};
+    static FixtureLibrary fixture;
+    Player player;
+    player_init(&player, fixture_library_open(&fixture));
+    store.settings.button_color = 1;
+    app_theme_apply(1);
+    SettingsScreens screens;
+    settings_screens_init(&screens, (SettingsContext){.store = &store, .player = &player}, &APP_THEME);
+    const MenuItem *item = find_item(&screens, label);
+    if (!item) return;
+    Screen *choice = item->select(item->context).target;
+    if (!choice) return;
+if (!choice) return;
+    choice->enter(choice->context, 0);
+    screens.choice.list.selected = 1;
+    static Color pixels[240 * 320];
+    Canvas canvas = canvas_make(pixels, (Rect){0, 0, 240, 320});
+    choice->draw(choice->context, &canvas);
+    FILE *out = fopen(path, "wb");
+    CHECK(out != NULL);
+    if (!out) return;
+    fprintf(out, "P6\n240 320\n255\n");
+    for (unsigned i = 0; i < 240 * 320; i++) {
+        Color c = pixels[i];
+        unsigned char rgb[3] = {(unsigned char)((c >> 11) * 255 / 31),
+            (unsigned char)(((c >> 5) & 63) * 255 / 63),
+            (unsigned char)((c & 31) * 255 / 31)};
+        fwrite(rgb, 1, 3, out);
+    }
+    fclose(out);
+    app_theme_apply(0);
+}
+
+int main(int argc, char **argv)
 {
     const TestCase cases[] = {
+        TEST_CASE(side_buttons_setting_offers_three_modes_and_saves_hybrid),
+        TEST_CASE(button_colour_picker_applies_immediately_and_saves),
         TEST_CASE(presets_and_replay_gain_survive_reload),
         TEST_CASE(legacy_settings_are_migrated),
         TEST_CASE(invalid_preset_data_is_rejected),
         TEST_CASE(audio_settings_are_reachable),
     };
-    return test_run_all(cases, TEST_CASE_COUNT(cases));
+    int result = test_run_all(cases, TEST_CASE_COUNT(cases));
+    if (argc == 3) {
+        render_settings_choice(argv[1], "Button colour");
+        render_settings_choice(argv[2], "Side buttons");
+    }
+    return result;
 }

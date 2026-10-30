@@ -5,7 +5,7 @@
 #include "core/hash.h"
 
 enum {
-    VERSION = 6,
+    VERSION = 7,
     FIFTH_VERSION = 5,
     FOURTH_VERSION = 4,
     THIRD_VERSION = 3,
@@ -29,6 +29,8 @@ enum {
     EQ_GAINS_FIELD = 19,
     EQ_USER_COUNT_FIELD = 24,
     REPLAY_GAIN_FIELD = 25,
+    BUTTON_COLOR_FIELD = 26,
+    SIDE_BUTTONS_FIELD = 27,
     USER_PRESETS_BASE = 28,
     USER_PRESET_RECORD_SIZE = 24,
     LEGACY_CHECKSUM_FIELD = 20,
@@ -238,6 +240,8 @@ void settings_encode(const Settings *settings, uint8_t *bytes)
     }
     bytes[EQ_USER_COUNT_FIELD] = settings->eq_user_preset_count;
     bytes[REPLAY_GAIN_FIELD] = (uint8_t)settings->replay_gain_mode;
+    bytes[BUTTON_COLOR_FIELD] = settings->button_color;
+    bytes[SIDE_BUTTONS_FIELD] = (uint8_t)settings->side_buttons;
     for (int index = 0; index < settings->eq_user_preset_count; index++) {
         int offset = USER_PRESETS_BASE + index * USER_PRESET_RECORD_SIZE;
         bytes[offset] = settings->eq_user_presets[index].id;
@@ -292,6 +296,8 @@ static bool values_valid(const uint8_t *bytes)
             return false;
         }
     }
+    if (version >= 7 && (bytes[BUTTON_COLOR_FIELD] >= BUTTON_COLOR_COUNT ||
+                        bytes[SIDE_BUTTONS_FIELD] >= SIDE_BUTTONS_COUNT)) return false;
     if (version >= 6) {
         if (bytes[EQ_USER_COUNT_FIELD] > EQ_USER_PRESET_CAPACITY ||
             bytes[REPLAY_GAIN_FIELD] >= REPLAY_GAIN_MODE_COUNT) return false;
@@ -337,6 +343,8 @@ bool settings_decode(const uint8_t *bytes, uint32_t length, Settings *settings)
         .eq_preset = version >= 5 ? bytes[EQ_PRESET_FIELD] : 0,
         .eq_user_preset_count = version >= 6 ? bytes[EQ_USER_COUNT_FIELD] : 0,
         .replay_gain_mode = version >= 6 ? (ReplayGainMode)bytes[REPLAY_GAIN_FIELD] : REPLAY_GAIN_OFF,
+        .button_color = version >= 7 ? bytes[BUTTON_COLOR_FIELD] : 0,
+        .side_buttons = version >= 7 ? (SideButtons)bytes[SIDE_BUTTONS_FIELD] : SIDE_BUTTONS_VOLUME,
     };
     if (version >= 5) {
         for (int band = 0; band < EQ_BAND_COUNT; band++) {

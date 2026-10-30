@@ -8,7 +8,7 @@
 #include "library/library_scan.h"
 
 enum {
-    COVER_BUILD_RECORD_BYTES = (112 * 112 + 56 * 56) * 2,
+    COVER_BUILD_RECORD_BYTES = (128 * 128 + 64 * 64) * 2,
     COVER_BUILD_MAX_COVERS = 0xFFFF
 };
 

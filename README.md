@@ -21,9 +21,9 @@ Huge credit and gratitude go to the original EchoPod developers for creating the
 
 ---
 
-## Latest release: v1.5.2
+## Latest release: v1.6.1
 
-[Download v1.5.2](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/tag/V1.5.2) · [Detailed changelog](CHANGELOG.md)
+[Download v1.5.2](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/tag/V1.6.1) · [Detailed changelog](CHANGELOG.md)
 
 Fixes scratchy playback for FLAC files with very short blocks, adds portrait Custom EQ with wheel/OK controls, and includes AAC-LC, Opus and ReplayGain support.
 
@@ -62,7 +62,7 @@ Follow these steps if your DAP Neo is currently running the factory stock firmwa
 
 ### 1. Download Release Files
 From the [`release/`](./release/) folder in this repository, obtain:
-- `DP3_V152.IMG` (The NeoPod firmware image)
+- `DP3_V161.IMG` (The NeoPod firmware image)
 - The `sd-card/.echo` folder (containing `neo_flac.bin`, `neo_mp3.bin`, `neo_aac.bin`, `neo_opus.bin`, and `neo_scan.bin`)
 
 ### 2. Copy Files to the DAP Neo
@@ -70,13 +70,13 @@ From the [`release/`](./release/) folder in this repository, obtain:
 2. Two drives will mount on your computer:
    - The **Internal Storage** drive
    - The **MicroSD Card** drive
-3. Copy **`DP3_V152.IMG`** directly to the **root** of the **Internal Storage** drive (`/`).
+3. Copy **`DP3_V161.IMG`** directly to the **root** of the **Internal Storage** drive (`/`).
 4. Copy the entire **`.echo`** folder directly to the **root** of your **MicroSD Card** (`/`).
    *(The `.echo` folder must be in the root directory so the path is `[SD Card]:\.echo\neo_*.bin`)*.
 
 ### 3. Apply the Firmware
 1. Safely eject and unplug the USB-C cable from the DAP Neo.
-2. The player's stock bootloader will detect `DP3_V152.IMG` and begin the flashing process.
+2. The player's stock bootloader will detect `DP3_V161.IMG` and begin the flashing process.
 3. Once completed, the player will automatically reboot directly into **NeoPod**!
 
 ---
@@ -95,9 +95,17 @@ Updating to a newer version of NeoPod is fast and does **NOT** require reverting
 3. While continuing to hold those 3 buttons, plug the USB-C cable into your PC. Keep holding for 3–5 seconds, then release. The screen remains black in recovery mode.
 4. Run the flashing script:
    ```cmd
-   python flash-neo.py release/DP3_V152.IMG
+   python flash-neo.py release/DP3_V161.IMG
    ```
-5. The script flashes both firmware slots directly, verifies the header, and automatically restarts your player directly into the updated NeoPod release!
+5. The script flashes both firmware slots, verifies the Slot 1 header, requests a reset and checks whether the live recovery interface disconnects. If normal reset leaves it in recovery, it tries Rockchip's normal-boot/MSC reset mode. If restart cannot be confirmed, it tells you to use the pinhole reset; another flash is not needed.
+
+To try only the restart on a player already in recovery, without writing firmware:
+
+```cmd
+python flash-neo.py --reset-only
+```
+
+The reset logic is covered by mocked tests; the alternate reset mode still needs verification on the Neo.
 
 ---
 

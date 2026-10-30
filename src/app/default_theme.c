@@ -2,6 +2,24 @@
 
 #include "fonts/fonts.h"
 #include "hal/display.h"
+#include "settings/settings.h"
+
+Theme APP_THEME;
+
+void app_theme_apply(uint8_t color)
+{
+    static const Color COLORS[BUTTON_COLOR_COUNT] = {
+        COLOR_RGB(34, 96, 208), COLOR_RGB(22, 115, 62), COLOR_RGB(0, 124, 131),
+        COLOR_RGB(115, 54, 201), COLOR_RGB(173, 40, 113), COLOR_RGB(181, 44, 54),
+        COLOR_RGB(175, 79, 17), COLOR_RGB(138, 105, 11), COLOR_RGB(90, 102, 115)
+    };
+    APP_THEME = DEFAULT_THEME;
+    if (color == 0 || color >= BUTTON_COLOR_COUNT) return;
+    Color base = COLORS[color];
+    APP_THEME.colors.selection_background = base;
+    APP_THEME.colors.selection_top = color_blend(base, COLOR_RGB(255, 255, 255), 3);
+    APP_THEME.colors.selection_shine = color_blend(base, COLOR_RGB(255, 255, 255), 6);
+}
 
 const Theme DEFAULT_THEME = {
     .colors =

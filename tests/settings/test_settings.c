@@ -53,6 +53,7 @@ static void defaults_are_comfortable(void)
     CHECK_EQUAL(5u * 60000u, settings_auto_off_ms(&settings));
     CHECK_EQUAL(USB_MODE_STORAGE, settings.usb_mode);
     CHECK_EQUAL(30, settings.dac_volume);
+    CHECK_EQUAL(SIDE_BUTTONS_VOLUME, settings.side_buttons);
 }
 
 static void auto_off_options_are_stocks(void)
@@ -97,7 +98,7 @@ static void the_usb_mode_and_dac_volume_are_saved_at_bytes_fifteen_and_sixteen(v
     Settings settings = custom_settings();
     uint8_t bytes[SETTINGS_FILE_SIZE];
     settings_encode(&settings, bytes);
-    CHECK_EQUAL(6, bytes[VERSION_FIELD]);
+    CHECK_EQUAL(7, bytes[VERSION_FIELD]);
     CHECK_EQUAL(USB_MODE_DAC, bytes[USB_MODE_FIELD]);
     CHECK_EQUAL(37, bytes[DAC_VOLUME_FIELD]);
 }
@@ -141,7 +142,7 @@ static void a_newer_version_is_rejected(void)
     Settings settings = custom_settings();
     uint8_t bytes[SETTINGS_FILE_SIZE];
     settings_encode(&settings, bytes);
-    bytes[VERSION_FIELD] = 7;
+    bytes[VERSION_FIELD] = 8;
     rewrite_checksum(bytes);
     CHECK(!settings_decode(bytes, sizeof bytes, &settings));
 }
@@ -203,9 +204,50 @@ static void out_of_range_values_are_rejected(void)
     CHECK(!settings_decode(bytes, sizeof bytes, &settings));
 }
 
+static void button_colour_round_trips_and_legacy_files_keep_blue(void)
+{
+    Settings settings = custom_settings();
+    uint8_t bytes[SETTINGS_FILE_SIZE];
+    for (uint8_t color = 0; color < BUTTON_COLOR_COUNT; color++) {
+        settings.button_color = color;
+        settings_encode(&settings, bytes);
+        Settings restored;
+        CHECK(settings_decode(bytes, sizeof bytes, &restored));
+        CHECK_EQUAL(color, restored.button_color);
+    }
+    bytes[26] = BUTTON_COLOR_COUNT;
+    rewrite_checksum(bytes);
+    CHECK(!settings_decode(bytes, sizeof bytes, &settings));
+    bytes[VERSION_FIELD] = 6;
+    rewrite_checksum(bytes);
+    CHECK(settings_decode(bytes, sizeof bytes, &settings));
+    CHECK_EQUAL(0, settings.button_color);
+    CHECK_EQUAL(42, settings.volume);
+}
+
+static void side_button_mode_is_saved_validated_and_defaults_for_legacy_files(void)
+{
+    Settings settings = custom_settings();
+    settings.side_buttons = SIDE_BUTTONS_HYBRID;
+    uint8_t bytes[SETTINGS_FILE_SIZE];
+    settings_encode(&settings, bytes);
+    Settings restored;
+    CHECK(settings_decode(bytes, sizeof bytes, &restored));
+    CHECK_EQUAL(SIDE_BUTTONS_HYBRID, restored.side_buttons);
+    bytes[27] = SIDE_BUTTONS_COUNT;
+    rewrite_checksum(bytes);
+    CHECK(!settings_decode(bytes, sizeof bytes, &restored));
+    bytes[VERSION_FIELD] = 6;
+    rewrite_checksum(bytes);
+    CHECK(settings_decode(bytes, sizeof bytes, &restored));
+    CHECK_EQUAL(SIDE_BUTTONS_VOLUME, restored.side_buttons);
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
+        TEST_CASE(side_button_mode_is_saved_validated_and_defaults_for_legacy_files),
+        TEST_CASE(button_colour_round_trips_and_legacy_files_keep_blue),
         TEST_CASE(defaults_are_comfortable),
         TEST_CASE(timeout_options_end_with_never),
         TEST_CASE(sleep_options_start_with_off),

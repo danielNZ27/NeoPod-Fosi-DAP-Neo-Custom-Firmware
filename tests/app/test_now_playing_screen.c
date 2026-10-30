@@ -1,7 +1,11 @@
 #include <string.h>
+#include <stdio.h>
 
 #include "check.h"
 #include "screens/now_playing_screen.h"
+#include "default_theme.h"
+#include "fake_hal.h"
+#include "fixture_library.h"
 
 enum {
     TEXT_CAPACITY = 48
@@ -194,9 +198,179 @@ static void the_detail_line_leaves_out_what_is_unknown(void)
     CHECK(detail_text_is((PlayerStatus){0}, ""));
 }
 
-int main(void)
+static FixtureLibrary fixture;
+static Player player;
+static Theme portrait;
+static NowPlayingScreen playing_screen;
+static Screen *screen;
+
+static void select_seek_bar(void)
+{
+    fake_hal_reset();
+    const Library *library = fixture_library_open(&fixture);
+    player_init(&player, library);
+    BrowseQuery album = {.kind = BROWSE_ALBUM_TRACKS, .group = LIBRARY_ARTISTS,
+                         .subject = 0, .artist = LIBRARY_NONE};
+    CHECK(player_play_list(&player, album, 0, 7));
+    fake_hal_audio_set_position(10000);
+    portrait = DEFAULT_THEME;
+    portrait.metrics.screen_width = 240;
+    portrait.metrics.screen_height = 320;
+    screen = now_playing_screen_init(&playing_screen, (NowPlayingConfig){
+        .player = &player, .library = library, .theme = &portrait});
+    screen->enter(screen->context, 0);
+    for (int i = 0; i < 5; i++) {
+        screen->handle_key(screen->context, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, 10);
+    }
+    CHECK_EQUAL(5, playing_screen.selected_button);
+}
+
+static void wheel_selects_seek_and_ok_commits_only_the_preview(void)
+{
+    select_seek_bar();
+    screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 20);
+    CHECK(playing_screen.scrubbing);
+    CHECK_EQUAL(10000u, playing_screen.scrub_position_ms);
+    screen->handle_key(screen->context, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, 30);
+    CHECK_EQUAL(15000u, playing_screen.scrub_position_ms);
+    CHECK_EQUAL(0, fake_hal_audio_seek_count());
+    CHECK_EQUAL(10000u, player_status(&player).position_ms);
+    screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 40);
+    CHECK(!playing_screen.scrubbing);
+    CHECK_EQUAL(1, fake_hal_audio_seek_count());
+    CHECK_EQUAL(15000u, fake_hal_audio_last_seek());
+    CHECK_EQUAL(PLAYER_PLAYING, player_status(&player).state);
+}
+
+static void seek_can_be_cancelled_and_clamps_at_both_ends(void)
+{
+    select_seek_bar();
+    player_toggle_pause(&player);
+    screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 20);
+    for (int i = 0; i < 4; i++)
+        screen->handle_key(screen->context, (KeyEvent){KEY_WHEEL_UP, KEY_GESTURE_PRESS}, 30);
+    CHECK_EQUAL(0u, playing_screen.scrub_position_ms);
+    screen->handle_key(screen->context, (KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, 40);
+    CHECK(!playing_screen.scrubbing);
+    CHECK_EQUAL(0, fake_hal_audio_seek_count());
+    screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 50);
+    for (int i = 0; i < 1000; i++)
+        screen->handle_key(screen->context, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_REPEAT}, 60);
+    CHECK_EQUAL(playing_screen.status.duration_ms, playing_screen.scrub_position_ms);
+    screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 70);
+    CHECK_EQUAL(PLAYER_PAUSED, player_status(&player).state);
+}
+
+static void seek_focus_wraps_and_survives_editing_timeout(void)
+{
+    select_seek_bar();
+    screen->handle_key(screen->context, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, 20);
+    CHECK_EQUAL(0, playing_screen.selected_button);
+    screen->handle_key(screen->context, (KeyEvent){KEY_WHEEL_UP, KEY_GESTURE_PRESS}, 30);
+    CHECK_EQUAL(5, playing_screen.selected_button);
+    screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 40);
+    screen->update(screen->context, 10000);
+    CHECK(playing_screen.scrubbing);
+    player_skip(&player, 1);
+    screen->update(screen->context, 10001);
+    CHECK(!playing_screen.scrubbing);
+}
+
+static void volume_is_followed_by_mode_then_seek_and_four_modes_cycle(void)
+{
+    select_seek_bar();
+    KeyEvent next = {KEY_WHEEL_DOWN, KEY_GESTURE_PRESS};
+    KeyEvent previous = {KEY_WHEEL_UP, KEY_GESTURE_PRESS};
+    KeyEvent ok = {KEY_PLAY, KEY_GESTURE_PRESS};
+    screen->handle_key(screen->context, previous, 20);
+    CHECK_EQUAL(4, playing_screen.selected_button);
+    screen->handle_key(screen->context, previous, 21);
+    CHECK_EQUAL(3, playing_screen.selected_button);
+    screen->handle_key(screen->context, ok, 22);
+    CHECK(playing_screen.volume_mode);
+    screen->handle_key(screen->context, ok, 23);
+    CHECK(!playing_screen.volume_mode);
+    screen->handle_key(screen->context, next, 24);
+    CHECK_EQUAL(4, playing_screen.selected_button);
+    for (int cycle = 0; cycle < 2; cycle++) {
+        screen->handle_key(screen->context, ok, 30);
+        CHECK_EQUAL(SHUFFLE_SONGS, player_status(&player).shuffle);
+        CHECK_EQUAL(REPEAT_OFF, player_status(&player).repeat);
+        screen->handle_key(screen->context, ok, 40);
+        CHECK_EQUAL(SHUFFLE_OFF, player_status(&player).shuffle);
+        CHECK_EQUAL(REPEAT_ALL, player_status(&player).repeat);
+        screen->handle_key(screen->context, ok, 45);
+        CHECK_EQUAL(SHUFFLE_OFF, player_status(&player).shuffle);
+        CHECK_EQUAL(REPEAT_ONE, player_status(&player).repeat);
+        screen->handle_key(screen->context, ok, 50);
+        CHECK_EQUAL(SHUFFLE_OFF, player_status(&player).shuffle);
+        CHECK_EQUAL(REPEAT_OFF, player_status(&player).repeat);
+    }
+    CHECK(!playing_screen.scrubbing);
+    CHECK(!playing_screen.volume_mode);
+    CHECK_EQUAL(0, fake_hal_audio_seek_count());
+    CHECK_EQUAL(PLAYER_PLAYING, player_status(&player).state);
+    screen->handle_key(screen->context, next, 60);
+    CHECK_EQUAL(5, playing_screen.selected_button);
+    player_set_shuffle(&player, SHUFFLE_ALBUMS, 123);
+    player_set_repeat(&player, REPEAT_ONE);
+    screen->update(screen->context, 70);
+    CHECK_EQUAL(SHUFFLE_ALBUMS, playing_screen.status.shuffle);
+    CHECK_EQUAL(REPEAT_ONE, playing_screen.status.repeat);
+}
+
+static void controls_remain_visible_for_four_seconds_after_movement(void)
+{
+    select_seek_bar();
+    screen->update(screen->context, 4009);
+    CHECK(playing_screen.controls_active);
+    screen->handle_key(screen->context, (KeyEvent){KEY_WHEEL_UP, KEY_GESTURE_PRESS}, 4009);
+    screen->update(screen->context, 8008);
+    CHECK(playing_screen.controls_active);
+    screen->update(screen->context, 8009);
+    CHECK(!playing_screen.controls_active);
+}
+
+static void render_preview(const char *path, int mode)
+{
+    select_seek_bar();
+    if (mode == 1) {
+        screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 20);
+        screen->handle_key(screen->context, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, 30);
+    }
+    if (mode >= 2) {
+        screen->handle_key(screen->context, (KeyEvent){KEY_WHEEL_UP, KEY_GESTURE_PRESS}, 20);
+        screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 30);
+        if (mode >= 3)
+            screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 40);
+        if (mode == 4)
+            screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 50);
+    }
+    static Color pixels[240 * 320];
+    Canvas canvas = canvas_make(pixels, (Rect){0, 0, 240, 320});
+    screen->draw(screen->context, &canvas);
+    FILE *out = fopen(path, "wb");
+    CHECK(out != NULL);
+    if (!out) return;
+    fprintf(out, "P6\n240 320\n255\n");
+    for (unsigned i = 0; i < 240 * 320; i++) {
+        Color c = pixels[i];
+        unsigned char rgb[3] = {(unsigned char)((c >> 11) * 255 / 31),
+            (unsigned char)(((c >> 5) & 63) * 255 / 63),
+            (unsigned char)((c & 31) * 255 / 31)};
+        fwrite(rgb, 1, 3, out);
+    }
+    fclose(out);
+}
+
+int main(int argc, char **argv)
 {
     static const TestCase cases[] = {
+        TEST_CASE(controls_remain_visible_for_four_seconds_after_movement),
+        TEST_CASE(volume_is_followed_by_mode_then_seek_and_four_modes_cycle),
+        TEST_CASE(wheel_selects_seek_and_ok_commits_only_the_preview),
+        TEST_CASE(seek_can_be_cancelled_and_clamps_at_both_ends),
+        TEST_CASE(seek_focus_wraps_and_survives_editing_timeout),
         TEST_CASE(the_codec_has_a_short_name),
         TEST_CASE(lossless_streams_show_bit_depth_and_rate),
         TEST_CASE(lossy_streams_show_only_the_rate),
@@ -219,5 +393,15 @@ int main(void)
         TEST_CASE(progress_fills_in_proportion_to_the_position),
         TEST_CASE(progress_stays_inside_the_bar),
     };
-    return test_run_all(cases, TEST_CASE_COUNT(cases));
+    int result = test_run_all(cases, TEST_CASE_COUNT(cases));
+    if (argc == 3 || argc == 5 || argc == 6) {
+        render_preview(argv[1], 0);
+        render_preview(argv[2], 1);
+        if (argc >= 5) {
+            render_preview(argv[3], 2);
+            render_preview(argv[4], 3);
+            if (argc == 6) render_preview(argv[5], 4);
+        }
+    }
+    return result;
 }

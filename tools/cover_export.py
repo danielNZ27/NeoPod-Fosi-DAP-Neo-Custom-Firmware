@@ -10,8 +10,8 @@ import library_index
 
 MAGIC = b"EMCV"
 VERSION = 1
-FULL_SIZE = 112
-HALF_SIZE = 56
+FULL_SIZE = 128
+HALF_SIZE = 64
 HEADER = struct.Struct("<4sHHHHI")
 ENTRY = struct.Struct("<II")
 FNV_OFFSET = 2166136261
@@ -86,7 +86,52 @@ def square_crop(image):
 def cover_pixels(image, size):
     from PIL import Image
     resized = square_crop(image.convert("RGB")).resize((size, size), Image.Resampling.LANCZOS)
-    return [rgb565(*pixel) for pixel in resized.getdata()]
+    width, height = resized.size
+    data = list(resized.get_flattened_data() if hasattr(resized, "get_flattened_data") else resized.getdata())
+    grid = [[list(data[y * width + x]) for x in range(width)] for y in range(height)]
+    out = []
+    for y in range(height):
+        row = grid[y]
+        for x in range(width):
+            r, g, b = row[x]
+            r = 0.0 if r < 0 else (255.0 if r > 255 else float(r))
+            g = 0.0 if g < 0 else (255.0 if g > 255 else float(g))
+            b = 0.0 if b < 0 else (255.0 if b > 255 else float(b))
+
+            r5 = int(round(r * 31.0 / 255.0))
+            r5 = 0 if r5 < 0 else (31 if r5 > 31 else r5)
+            g6 = int(round(g * 63.0 / 255.0))
+            g6 = 0 if g6 < 0 else (63 if g6 > 63 else g6)
+            b5 = int(round(b * 31.0 / 255.0))
+            b5 = 0 if b5 < 0 else (31 if b5 > 31 else b5)
+
+            out.append((r5 << 11) | (g6 << 5) | b5)
+
+            qr = r5 * 255.0 / 31.0
+            qg = g6 * 255.0 / 63.0
+            qb = b5 * 255.0 / 31.0
+            err_r = r - qr
+            err_g = g - qg
+            err_b = b - qb
+
+            if x + 1 < width:
+                row[x + 1][0] += err_r * (7.0 / 16.0)
+                row[x + 1][1] += err_g * (7.0 / 16.0)
+                row[x + 1][2] += err_b * (7.0 / 16.0)
+            if y + 1 < height:
+                next_row = grid[y + 1]
+                if x > 0:
+                    next_row[x - 1][0] += err_r * (3.0 / 16.0)
+                    next_row[x - 1][1] += err_g * (3.0 / 16.0)
+                    next_row[x - 1][2] += err_b * (3.0 / 16.0)
+                next_row[x][0] += err_r * (5.0 / 16.0)
+                next_row[x][1] += err_g * (5.0 / 16.0)
+                next_row[x][2] += err_b * (5.0 / 16.0)
+                if x + 1 < width:
+                    next_row[x + 1][0] += err_r * (1.0 / 16.0)
+                    next_row[x + 1][1] += err_g * (1.0 / 16.0)
+                    next_row[x + 1][2] += err_b * (1.0 / 16.0)
+    return out
 
 
 def mp4_pictures(tags):

@@ -22,7 +22,7 @@ Requires DAP Neo in Rockusb recovery mode:
 """
 import ctypes as c
 from ctypes import wintypes as w
-import winreg, struct, hashlib, sys, time
+import winreg, struct, hashlib, sys, time, argparse
 from pathlib import Path
 
 k = c.WinDLL('kernel32', use_last_error=True)
@@ -93,8 +93,11 @@ class Rockusb:
             raise c.WinError(c.get_last_error())
 
     def close(self):
-        k.CloseHandle(self.h)
-        k.CloseHandle(self.write_h)
+        for name in ('h', 'write_h'):
+            handle = getattr(self, name, None)
+            if handle is not None:
+                setattr(self, name, None)
+                k.CloseHandle(handle)
 
     def command(self, opcode, length, address=0, sectors=0):
         self.tag += 1
@@ -120,15 +123,66 @@ class Rockusb:
         if sign != 0x53425355 or tag != self.tag or result != 0:
             raise RuntimeError(f'Write failed at LBA {lba}: status={result}')
 
-    def reset(self):
+    def reset(self, subcode=0):
+        # Rockchip: 0 = normal reset, 1 = reset to normal USB/MSC boot.
+        if subcode not in (0, 1):
+            raise ValueError('Only normal-boot reset modes are supported')
         self.tag += 1
-        cb = bytes([0xFF, 0]) + b'\0'*14
+        cb = bytes([0xFF, subcode]) + bytes(14)
         cbw = struct.pack('<IIIBBB', 0x43425355, self.tag, 0, 0x00, 0, 6) + cb
+        transfer(self.write_h, cbw, write=True)
+        status = transfer(self.h, 13, write=False)
+        if len(status) != 13:
+            raise RuntimeError(f'Short reset status: {len(status)} / 13 bytes')
+        sign, tag, residue, result = struct.unpack('<IIIB', status)
+        if sign != 0x53425355 or tag != self.tag or residue != 0 or result != 0:
+            raise RuntimeError(f'Reset rejected or invalid status: result={result}, residue={residue}')
+
+
+def recovery_interface_present(path):
+    # Registry entries survive unplugging; opening the actual recovery pipe
+    # checks whether the live interface is still available. No I/O is sent.
+    handle = k.CreateFileW(path + '\\0', 0xc0000000, 3, None, 3, 0x40000000, None)
+    if handle == c.c_void_p(-1).value:
+        error = c.get_last_error()
+        if error in (2, 3, 1167):
+            return False
+        raise c.WinError(error)
+    k.CloseHandle(handle)
+    return True
+
+
+def restart_player(usb, path):
+    for subcode in (0, 1):
+        if subcode == 1:
+            print('Still in recovery; trying Rockchip normal-boot/MSC reset...')
+            try:
+                usb = Rockusb(path)
+            except OSError as error:
+                print(f'Could not reopen recovery interface: {error}')
+                return False
+        problem = None
         try:
-            transfer(self.write_h, cbw, write=True)
-            transfer(self.h, 13, write=False)
-        except Exception:
-            pass
+            usb.reset(subcode)
+        except (OSError, TimeoutError, RuntimeError) as error:
+            # Disconnecting before the final status is normal for some loaders.
+            # It counts as leaving recovery only after the live check below.
+            problem = str(error)
+        finally:
+            usb.close()
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            try:
+                if not recovery_interface_present(path):
+                    return True
+            except OSError as error:
+                print(f'Could not check recovery disconnect: {error}')
+                return False
+            time.sleep(0.2)
+        if problem:
+            print(f'Reset attempt did not leave recovery: {problem}')
+    return False
+
 
 def flash(image_path=None):
     if not image_path:
@@ -193,11 +247,32 @@ def flash(image_path=None):
             raise RuntimeError("Verification mismatch on Slot 1!")
 
         print("\nResetting DAP Neo...")
-        usb.reset()
-        print(f"\n[COMPLETE] Successfully flashed {image_path.name} and restarted player!")
+        disconnected = restart_player(usb, path)
+        print(f"\n[COMPLETE] Successfully flashed {image_path.name}.")
+        if disconnected:
+            print('Recovery interface disconnected after reset; the player should now boot.')
+        else:
+            print('[NOTE] Automatic restart was not confirmed. Use the pinhole reset as usual; no reflash is needed.')
     finally:
         usb.close()
 
 if __name__ == "__main__":
-    target = sys.argv[1] if len(sys.argv) > 1 else None
-    flash(target)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('image', nargs='?', help='Firmware image to flash')
+    parser.add_argument('--reset-only', action='store_true',
+                        help='Try restarting a player already in recovery; do not write firmware')
+    args = parser.parse_args()
+    if args.reset_only:
+        if args.image:
+            parser.error('--reset-only does not accept a firmware image')
+        path = device_path()
+        usb = Rockusb(path)
+        try:
+            if restart_player(usb, path):
+                print('Recovery interface disconnected after reset; the player should now boot.')
+            else:
+                print('Automatic restart was not confirmed. Use the pinhole reset as usual.')
+        finally:
+            usb.close()
+    else:
+        flash(args.image)

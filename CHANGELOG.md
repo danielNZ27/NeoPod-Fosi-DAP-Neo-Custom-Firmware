@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.6.1 — 2026-10-31
+
+Firmware image: DP3_V161.IMG. This release brings high-quality album artwork scaling with real-time bilinear interpolation, Floyd-Steinberg dithering, and a 5-category Settings menu.
+
+### High Quality Album Artwork Upgrade
+- Upgraded stored album art resolution from 112×112 to **128×128** (+31% pixel resolution) with **64×64** half-size thumbnails.
+- Added real-time hardware-optimized bilinear interpolation (color_bilinear) in quad and column scaling. Album art on the Home Menu (128×128 → 170×170), Cover Flow center (128×128 → 150×150), and perspective side quads appear smooth and naturally filtered without blocky nearest-neighbor pixelation.
+- Fixed blue line artifacts: isolated and blended 5-bit red, 6-bit green, and 5-bit blue channels independently in color_lerp with rounding (+128u) before packing into RGB565.
+- Added 2D Floyd-Steinberg error-diffusion dithering for cover export, eliminating 16-bit RGB565 gradient banding.
+- Fixed Now Playing layout: explicitly set PORTRAIT_COVER_SIZE = 112 downsampled from 128, preserving clean 6px spacing above the song title.
+- Preserved rescan stability with static BSS allocation and 14.8 KB of free headroom in internal SRAM.
+
+### Categorized Settings Submenus
+- Replaced the single 15-item flat list with 5 categorized submenus:
+  1. **Playback:** Shuffle, Repeat, ReplayGain
+  2. **Audio:** Equalizer, Gain, Output (3.5 mm / 4.4 mm)
+  3. **Display & Controls:** Brightness, Screen timeout, Button colour, Side buttons, Start screen
+  4. **Power & Sleep:** Sleep timer, Auto off
+  5. **System:** USB mode, Rescan library
+- Full native ScreenStack integration with chevrons and instant Menu/Back button popping.
+
 ## v1.5.2 — 2026-10-31
 
 Firmware image: `DP3_V152.IMG`. This release collects the changes since v1.4.7,

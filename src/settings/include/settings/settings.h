@@ -33,6 +33,12 @@ typedef enum UsbMode {
     USB_MODE_DAC
 } UsbMode;
 
+typedef enum SideButtons {
+    SIDE_BUTTONS_VOLUME,
+    SIDE_BUTTONS_TRACKS,
+    SIDE_BUTTONS_HYBRID
+} SideButtons;
+
 enum {
     GAIN_LEVEL_COUNT = GAIN_HIGH + 1,
     OUTPUT_JACK_COUNT = OUTPUT_BALANCED + 1,
@@ -47,6 +53,8 @@ enum {
     AUTO_OFF_OPTION_COUNT = 4,
     EQ_USER_PRESET_NAME_MAX = 15,
     EQ_USER_PRESET_CAPACITY = 8,
+    BUTTON_COLOR_COUNT = 9,
+    SIDE_BUTTONS_COUNT = SIDE_BUTTONS_HYBRID + 1,
     SETTINGS_FILE_SIZE = 256,
     SETTINGS_LEGACY_FILE_SIZE = 24
 };
@@ -75,6 +83,8 @@ typedef struct Settings {
     uint8_t eq_user_preset_count;
     EqUserPreset eq_user_presets[EQ_USER_PRESET_CAPACITY];
     ReplayGainMode replay_gain_mode;
+    uint8_t button_color;
+    SideButtons side_buttons;
 } Settings;
 
 Settings settings_defaults(void);

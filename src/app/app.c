@@ -25,6 +25,7 @@
 #include "hal/power.h"
 #include "library_rescan.h"
 #include "library_store.h"
+#include "lock_screen.h"
 #include "music_check.h"
 #include "player.h"
 #include "settings_store.h"
@@ -106,6 +107,7 @@ typedef struct AppState {
     AppOptions options;
     bool display_on;
     bool powered_off;
+    WheelLock wheel_lock;
 } AppState;
 
 static AppState app;
@@ -176,6 +178,7 @@ static void set_display(bool on)
     app.display_on = on;
     app.light_after_frame = on;
     if (!on) {
+        app.wheel_lock = (WheelLock){0};
         hal_display_set_power(false);
     }
     use_wanted_clock();
@@ -233,6 +236,12 @@ static void use_screen_key_behaviors(void)
 {
     bool hold = !app.display_on || top_screen()->hold_volume_keys;
     KeyBehavior volume = hold ? KEY_BEHAVIOR_TAP_HOLD_REPEAT : KEY_BEHAVIOR_REPEAT;
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    if (app.settings.settings.side_buttons == SIDE_BUTTONS_TRACKS)
+        volume = KEY_BEHAVIOR_TAP_OR_HOLD;
+    if (app.settings.settings.side_buttons == SIDE_BUTTONS_HYBRID)
+        volume = KEY_BEHAVIOR_TAP_HOLD_REPEAT;
+#endif
     key_tracker_set_behavior(&app.keys, KEY_VOLUME_UP, volume);
     key_tracker_set_behavior(&app.keys, KEY_VOLUME_DOWN, volume);
 }
@@ -327,26 +336,49 @@ static bool ignored_power_tap(KeyEvent event)
 static void dispatch_event(KeyEvent event, uint32_t now_ms)
 {
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
-    if (event.key == KEY_VOLUME_UP || event.key == KEY_VOLUME_DOWN) {
+    if ((event.key == KEY_VOLUME_UP || event.key == KEY_VOLUME_DOWN) &&
+        app.settings.settings.side_buttons != SIDE_BUTTONS_HYBRID) {
         event.gesture = KEY_GESTURE_PRESS;
     }
 #endif
     if (ignored_power_tap(event)) {
         return;
     }
+    bool was_dark = !app.power.display_on;
     PowerKeyOutcome outcome = power_policy_key(&app.power, event, now_ms);
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    if (was_dark && app.power.display_on && event.key == KEY_POWER &&
+        event.gesture == KEY_GESTURE_PRESS) {
+        wheel_lock_begin(&app.wheel_lock, now_ms);
+    }
+#else
+    (void)was_dark;
+#endif
+    if (app.wheel_lock.active && app.power.display_on && event.key != KEY_POWER) {
+        if (wheel_lock_key(&app.wheel_lock, event, now_ms)) {
+            show_now_playing(now_ms);
+        }
+        return;
+    }
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    if ((!outcome.consumed || outcome.background) &&
+        (event.key == KEY_VOLUME_UP || event.key == KEY_VOLUME_DOWN)) {
+        int direction = event.key == KEY_VOLUME_UP ? 1 : -1;
+        SideButtons mode = app.settings.settings.side_buttons;
+        if (mode == SIDE_BUTTONS_TRACKS ||
+            (mode == SIDE_BUTTONS_HYBRID && event.gesture == KEY_GESTURE_PRESS)) {
+            player_skip(&app.player, direction);
+        } else {
+            player_change_volume(&app.player, direction);
+        }
+        return;
+    }
+#endif
     if (outcome.shutdown) {
         shut_down(GOODBYE_TEXT);
     } else if (outcome.background) {
         run_background(event);
     } else if (!outcome.consumed) {
-#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
-        if (event.key == KEY_VOLUME_UP || event.key == KEY_VOLUME_DOWN) {
-            int delta = event.key == KEY_VOLUME_UP ? 1 : -1;
-            player_change_volume(&app.player, delta);
-            return;
-        }
-#endif
         dispatch_to_screen(event, now_ms);
     }
 }
@@ -356,6 +388,11 @@ static void dispatch_key_events(uint32_t now_ms)
     KeyEvent event;
     while (!app.powered_off && key_tracker_next_event(&app.keys, &event)) {
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+        if (app.wheel_lock.active && app.power.display_on && event.key != KEY_POWER) {
+            ok_pending = false;
+            dispatch_event(event, now_ms);
+            continue;
+        }
         if (ok_pending && deadline_reached(now_ms, ok_deadline)) {
             ok_pending = false;
             dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
@@ -363,7 +400,11 @@ static void dispatch_key_events(uint32_t now_ms)
         if (event.key == KEY_PLAY && event.gesture == KEY_GESTURE_PRESS) {
             if (ok_pending) {
                 ok_pending = false;
-                dispatch_event((KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, now_ms);
+                if (app.display_on) {
+                    dispatch_event((KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, now_ms);
+                } else {
+                    player_skip(&app.player, 1);
+                }
             } else {
                 ok_pending = true;
                 ok_deadline = now_ms + 300u;
@@ -422,7 +463,7 @@ static void update_power(uint32_t now_ms)
     set_display(app.power.display_on);
     if (!app.display_on) {
         save_settings();
-    } else {
+    } else if (!app.wheel_lock.active) {
         show_now_playing(now_ms);
     }
 }
@@ -437,7 +478,7 @@ static void update_screen(uint32_t now_ms)
 
 static void draw_fade(Canvas *canvas, const Fade *fade, const char *text)
 {
-    const Theme *theme = &DEFAULT_THEME;
+    const Theme *theme = &APP_THEME;
     Rect screen = {0, 0, HAL_DISPLAY_WIDTH, HAL_DISPLAY_HEIGHT};
     Color color =
         color_blend(theme->colors.background, theme->colors.text, fade_alpha(fade, app.now_ms));
@@ -469,7 +510,7 @@ static void draw_shifted(Screen *screen, Canvas *canvas, int x, Rect area)
 
 static void draw_slide(Canvas *canvas, Screen *arriving)
 {
-    const Theme *theme = &DEFAULT_THEME;
+    const Theme *theme = &APP_THEME;
     Screen *leaving = app.leaving;
     bool whole = arriving->full_screen || leaving->full_screen;
     Rect area =
@@ -489,6 +530,10 @@ static void draw_frame(void *context, Canvas *canvas)
     if (draw_running_fade(canvas)) {
         return;
     }
+    if (state->wheel_lock.active) {
+        wheel_lock_draw(&state->wheel_lock, canvas, &APP_THEME);
+        return;
+    }
     Screen *screen = screen_stack_top(&state->stack);
     if (slide_running()) {
         draw_slide(canvas, screen);
@@ -496,9 +541,9 @@ static void draw_frame(void *context, Canvas *canvas)
         screen->draw(screen->context, canvas);
     }
     if (!screen->full_screen) {
-        status_bar_draw(canvas, &DEFAULT_THEME, state->status_bar);
+        status_bar_draw(canvas, &APP_THEME, state->status_bar);
     }
-    toast_draw(&state->toast, canvas, &DEFAULT_THEME);
+    toast_draw(&state->toast, canvas, &APP_THEME);
     if (state->options.show_frame_time) {
         FrameBreakdown breakdown = {
             .total_us = frame_stats_average_us(&state->frame_stats),
@@ -506,7 +551,7 @@ static void draw_frame(void *context, Canvas *canvas)
             .draw_us = frame_stats_average_us(&state->draw_stats),
             .send_us = frame_stats_average_us(&state->send_stats),
         };
-        frame_overlay_draw(canvas, &DEFAULT_THEME, breakdown, hal_audio_stats());
+        frame_overlay_draw(canvas, &APP_THEME, breakdown, hal_audio_stats());
     }
 }
 
@@ -561,7 +606,7 @@ static void render(FrameDrawer drawer, bool drawer_paints_everything)
         .screen_width = HAL_DISPLAY_WIDTH,
         .screen_height = HAL_DISPLAY_HEIGHT,
         .strip_height = STRIP_HEIGHT,
-        .background = DEFAULT_THEME.colors.background,
+        .background = APP_THEME.colors.background,
         .drawer_paints_everything = drawer_paints_everything,
     };
     FrameSink sink = {.write = write_to_display, .context = NULL};
@@ -621,7 +666,7 @@ static void start_screens(uint32_t now_ms)
 {
     AppScreensContext context = {
         .options = &app.options,
-        .theme = &DEFAULT_THEME,
+        .theme = &APP_THEME,
         .store = &app.library,
         .player = &app.player,
         .spoken = &app.spoken,
@@ -665,6 +710,7 @@ void app_start(void)
     app.options = (AppOptions){.show_frame_time = false, .ignore_power_taps = false};
     app.toast = (Toast){.visible = false};
     app.powered_off = false;
+    app.wheel_lock = (WheelLock){0};
     app.saying_goodbye = false;
     app.goodbye_text = GOODBYE_TEXT;
     low_battery_init(&app.low_battery);
@@ -673,6 +719,7 @@ void app_start(void)
     app.now_ms = now_ms;
     CardFilesReport files = card_files_prepare();
     settings_store_load(&app.settings);
+    app_theme_apply(app.settings.settings.button_color);
     start_playback();
     start_hardware(now_ms);
     start_screens(now_ms);
@@ -786,6 +833,7 @@ void app_step(void)
     uint32_t now_ms = hal_clock_milliseconds();
     app.now_ms = now_ms;
     hal_audio_service();
+    wheel_lock_update(&app.wheel_lock, now_ms);
     hal_bluetooth_service();
     read_input();
     key_tracker_update(&app.keys, now_ms);
@@ -821,7 +869,7 @@ void app_step(void)
 
 void app_show_notice(const char *title, const char *message)
 {
-    MessageConfig config = {.title = title, .message = message, .theme = &DEFAULT_THEME};
+    MessageConfig config = {.title = title, .message = message, .theme = &APP_THEME};
     Screen *screen = message_screen_init(&app.notice, config);
     if (!app.display_on) {
         set_display(true);
@@ -848,6 +896,7 @@ const FrameStats *app_frame_stats(void)
 
 const char *app_screen_title(void)
 {
+    if (app.wheel_lock.active) return "Locked";
     return top_screen()->title;
 }
 

@@ -19,9 +19,19 @@ typedef struct EqLayout {
     int left, right, middle, range, labels_y;
 } EqLayout;
 
+static inline bool portrait_theme(const Theme *theme)
+{
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    (void)theme;
+    return true;
+#else
+    return theme->metrics.screen_height > theme->metrics.screen_width;
+#endif
+}
+
 static EqLayout layout_of(const Theme *theme)
 {
-    bool portrait = theme->metrics.screen_height > theme->metrics.screen_width;
+    bool portrait = portrait_theme(theme);
     int top = theme->metrics.header_height + (portrait ? 50 : 22);
     int labels = theme->metrics.screen_height - (portrait ? 84 : 36);
     int bottom = labels - (portrait ? 12 : 4);
@@ -196,7 +206,7 @@ static void draw_columns(const CustomEqScreen *screen, Canvas *canvas, const The
         Rect freq_area = label_centered_area(freq_style.font, (Rect){cx - 18, layout.labels_y, 36, LABEL_HEIGHT},
                                             SHORT_NAMES[band]);
         label_draw(canvas, freq_style, (Label){.area = freq_area, .text = SHORT_NAMES[band]});
-        if (theme->metrics.screen_height > theme->metrics.screen_width) {
+        if (portrait_theme(theme)) {
             char value[8];
             StringBuilder b = string_builder_make(value, sizeof value);
             if (gain != 0) string_builder_append_char(&b, gain > 0 ? '+' : '-');
@@ -229,7 +239,7 @@ static void draw(void *context, Canvas *canvas)
     draw_grid(canvas, theme);
     draw_columns(screen, canvas, theme);
 
-    bool portrait = theme->metrics.screen_height > theme->metrics.screen_width;
+    bool portrait = portrait_theme(theme);
     const char *hint = screen->adjusting ? "Wheel: Adjust gain" : "Wheel: Choose band";
     const char *action = screen->adjusting ? "OK: Confirm" : "OK: Adjust";
     TextStyle hint_style = {.font = theme->fonts.small, .color = theme->colors.text_secondary};

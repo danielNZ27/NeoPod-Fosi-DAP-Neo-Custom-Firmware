@@ -34,6 +34,7 @@ enum {
     STATUS_CAPACITY = 64,
     BITRATE_CAPACITY = 24,
     RATE_CAPACITY = 16,
+    PORTRAIT_COVER_SIZE = 112,
     PORTRAIT_COVER_TOP = 28,
     PORTRAIT_TITLE_TOP = 146,
     PORTRAIT_ARTIST_TOP = 170,
@@ -42,12 +43,20 @@ enum {
     PORTRAIT_DETAIL_TOP = 236,
     PORTRAIT_MODES_TOP = 258,
     PORTRAIT_PROGRESS_TOP = 288,
-    PORTRAIT_TIMES_TOP = 296
+    PORTRAIT_TIMES_TOP = 296,
+    MODE_CONTROL = 4,
+    SEEK_CONTROL = 5,
+    CONTROL_COUNT = 6
 };
 
 static inline bool theme_is_portrait(const Theme *theme)
 {
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    (void)theme;
+    return true;
+#else
     return theme->metrics.screen_height > theme->metrics.screen_width;
+#endif
 }
 
 static void draw_outline(Canvas *canvas, Rect area, Color color);
@@ -234,7 +243,9 @@ static void move_scrub(NowPlayingScreen *now_playing, int32_t delta_ms)
 
 static void start_scrub(NowPlayingScreen *now_playing)
 {
-    now_playing->scrubbing = now_playing->status.has_track;
+    now_playing->scrubbing = now_playing->status.has_track && now_playing->status.duration_ms > 0;
+    now_playing->feedback = NOW_PLAYING_FEEDBACK_NONE;
+    now_playing->volume_mode = false;
     now_playing->scrub_position_ms = now_playing->status.position_ms;
 }
 
@@ -340,6 +351,9 @@ static void refresh(NowPlayingScreen *now_playing, uint32_t now_ms)
     now_playing->now_ms = now_ms;
     now_playing->status = player_status(now_playing->config.player);
     bool changed = !now_playing->has_text || now_playing->text_track != now_playing->status.track;
+    if (now_playing->scrubbing && (!now_playing->status.has_track || changed)) {
+        now_playing->scrubbing = false;
+    }
     if (now_playing->status.has_track && changed) {
         load_texts(now_playing, now_playing->status.track);
         now_playing->has_text = true;
@@ -351,6 +365,7 @@ static void refresh(NowPlayingScreen *now_playing, uint32_t now_ms)
 static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
 {
     NowPlayingScreen *now_playing = context;
+    refresh(now_playing, now_ms);
     const Theme *theme = now_playing->config.theme;
     bool is_portrait = theme_is_portrait(theme);
 
@@ -360,7 +375,7 @@ static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
         if (now_playing->volume_mode) {
             if (event.key == KEY_WHEEL_DOWN || event.key == KEY_VOLUME_UP) {
                 player_change_volume(now_playing->config.player, 1);
-                now_playing->controls_active_until_ms = now_ms + 2000;
+                now_playing->controls_active_until_ms = now_ms + NOW_PLAYING_CONTROLS_MS;
                 now_playing->feedback = NOW_PLAYING_FEEDBACK_VOLUME;
                 now_playing->feedback_started_ms = now_ms;
                 refresh(now_playing, now_ms);
@@ -368,7 +383,7 @@ static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
             }
             if (event.key == KEY_WHEEL_UP || event.key == KEY_VOLUME_DOWN) {
                 player_change_volume(now_playing->config.player, -1);
-                now_playing->controls_active_until_ms = now_ms + 2000;
+                now_playing->controls_active_until_ms = now_ms + NOW_PLAYING_CONTROLS_MS;
                 now_playing->feedback = NOW_PLAYING_FEEDBACK_VOLUME;
                 now_playing->feedback_started_ms = now_ms;
                 refresh(now_playing, now_ms);
@@ -376,7 +391,7 @@ static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
             }
             if (event.key == KEY_PLAY) {
                 now_playing->volume_mode = false;
-                now_playing->controls_active_until_ms = now_ms + 2000;
+                now_playing->controls_active_until_ms = now_ms + NOW_PLAYING_CONTROLS_MS;
                 refresh(now_playing, now_ms);
                 return screen_action_none();
             }
@@ -392,9 +407,9 @@ static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
             if (!controls_visible) {
                 now_playing->controls_active = true;
             } else {
-                now_playing->selected_button = (uint8_t)((now_playing->selected_button + 1) % 4);
+                now_playing->selected_button = (uint8_t)((now_playing->selected_button + 1) % CONTROL_COUNT);
             }
-            now_playing->controls_active_until_ms = now_ms + 2000;
+            now_playing->controls_active_until_ms = now_ms + NOW_PLAYING_CONTROLS_MS;
             refresh(now_playing, now_ms);
             return screen_action_none();
         }
@@ -402,9 +417,9 @@ static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
             if (!controls_visible) {
                 now_playing->controls_active = true;
             } else {
-                now_playing->selected_button = (uint8_t)((now_playing->selected_button + 3) % 4);
+                now_playing->selected_button = (uint8_t)((now_playing->selected_button + CONTROL_COUNT - 1) % CONTROL_COUNT);
             }
-            now_playing->controls_active_until_ms = now_ms + 2000;
+            now_playing->controls_active_until_ms = now_ms + NOW_PLAYING_CONTROLS_MS;
             refresh(now_playing, now_ms);
             return screen_action_none();
         }
@@ -430,16 +445,30 @@ static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
                     now_playing->feedback = NOW_PLAYING_FEEDBACK_NEXT;
                     now_playing->feedback_started_ms = now_ms;
                     break;
+                case MODE_CONTROL: {
+                    RepeatMode repeat = now_playing->status.repeat == REPEAT_ALL ? REPEAT_ONE
+                        : now_playing->status.repeat == REPEAT_OFF &&
+                          now_playing->status.shuffle != SHUFFLE_OFF ? REPEAT_ALL : REPEAT_OFF;
+                    bool shuffle = now_playing->status.shuffle == SHUFFLE_OFF &&
+                                   now_playing->status.repeat == REPEAT_OFF;
+                    player_set_shuffle(now_playing->config.player,
+                                       shuffle ? SHUFFLE_SONGS : SHUFFLE_OFF, now_ms);
+                    player_set_repeat(now_playing->config.player, repeat);
+                    break;
+                }
+                case SEEK_CONTROL:
+                    start_scrub(now_playing);
+                    break;
                 case 3:
                     now_playing->volume_mode = true;
-                    now_playing->controls_active_until_ms = now_ms + 2000;
+                    now_playing->controls_active_until_ms = now_ms + NOW_PLAYING_CONTROLS_MS;
                     now_playing->feedback = NOW_PLAYING_FEEDBACK_VOLUME;
                     now_playing->feedback_started_ms = now_ms;
                     break;
                 default:
                     break;
                 }
-                now_playing->controls_active_until_ms = now_ms + 2000;
+                now_playing->controls_active_until_ms = now_ms + NOW_PLAYING_CONTROLS_MS;
                 refresh(now_playing, now_ms);
                 return screen_action_none();
             } else {
@@ -452,6 +481,9 @@ static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
 
     NowPlayingCommand command = now_playing_command_for(event, now_playing->scrubbing);
     ScreenAction action = run_command(now_playing, command);
+    if (command == NOW_PLAYING_SCRUB_COMMIT || command == NOW_PLAYING_SCRUB_CANCEL) {
+        now_playing->controls_active_until_ms = now_ms + NOW_PLAYING_CONTROLS_MS;
+    }
     refresh(now_playing, now_ms);
     NowPlayingFeedback feedback = now_playing_feedback_for(command, now_playing->status.state);
     if (feedback != NOW_PLAYING_FEEDBACK_NONE) {
@@ -519,13 +551,14 @@ static void draw_cover(const NowPlayingScreen *now_playing, Canvas *canvas)
 {
     const Theme *theme = now_playing->config.theme;
     bool is_portrait = theme_is_portrait(theme);
-    int left = is_portrait ? (theme->metrics.screen_width - COVER_FULL_SIZE) / 2
+    int size = is_portrait ? PORTRAIT_COVER_SIZE : COVER_FULL_SIZE;
+    int left = is_portrait ? (theme->metrics.screen_width - size) / 2
                            : theme->metrics.padding;
     int top = is_portrait ? PORTRAIT_COVER_TOP : COVER_TOP;
     Image cover;
     if (!current_cover(now_playing, &cover)) {
         if (is_portrait) {
-            Rect box = {left, top, COVER_FULL_SIZE, COVER_FULL_SIZE};
+            Rect box = {left, top, size, size};
             canvas_fill_rect(canvas, box, theme->colors.header_background);
             draw_outline(canvas, box, theme->colors.divider);
         }
@@ -533,7 +566,7 @@ static void draw_cover(const NowPlayingScreen *now_playing, Canvas *canvas)
     }
     image_draw_quad(
         canvas, cover,
-        (Quad){left, COVER_FULL_SIZE, top, COVER_FULL_SIZE, top, COVER_FULL_SIZE});
+        (Quad){left, size, top, size, top, size});
 }
 
 static Rect line_area(const Theme *theme, int top, int height)
@@ -608,12 +641,20 @@ static void draw_progress(const NowPlayingScreen *now_playing, Canvas *canvas)
     bool is_portrait = theme_is_portrait(theme);
     int top = is_portrait ? PORTRAIT_PROGRESS_TOP : PROGRESS_TOP;
     Rect bar = line_area(theme, top, PROGRESS_HEIGHT);
-    bool volume = now_playing->volume_mode || showing(now_playing, NOW_PLAYING_FEEDBACK_VOLUME);
+    bool focused = is_portrait && now_playing->controls_active &&
+                   now_playing->now_ms < now_playing->controls_active_until_ms &&
+                   now_playing->selected_button == SEEK_CONTROL;
+    bool volume = !now_playing->scrubbing && !focused &&
+                  (now_playing->volume_mode || showing(now_playing, NOW_PLAYING_FEEDBACK_VOLUME));
     int filled = volume ? now_playing_volume_width(now_playing->status.volume, bar.width)
                         : now_playing_progress_width(shown_position(now_playing),
                                                      now_playing->status.duration_ms, bar.width);
     Color fill =
         now_playing->scrubbing || volume ? theme->colors.selection_background : theme->colors.text;
+    if (focused || now_playing->scrubbing) {
+        draw_outline(canvas, (Rect){bar.x - 3, bar.y - 3, bar.width + 6, bar.height + 6},
+                     theme->colors.selection_background);
+    }
     canvas_fill_rect(canvas, bar, theme->colors.divider);
     canvas_fill_rect(canvas, (Rect){bar.x, bar.y, filled, bar.height}, fill);
 }
@@ -635,7 +676,10 @@ static void draw_times(const NowPlayingScreen *now_playing, Canvas *canvas)
     char remaining[TIME_CAPACITY] = "-";
     format_duration(position_ms, elapsed, sizeof elapsed);
     format_duration(remaining_ms, remaining + 1, sizeof remaining - 1);
-    if (now_playing->volume_mode || showing(now_playing, NOW_PLAYING_FEEDBACK_VOLUME)) {
+    if (!now_playing->scrubbing &&
+        !(theme_is_portrait(theme) && now_playing->controls_active &&
+          now_playing->selected_button == SEEK_CONTROL) &&
+        (now_playing->volume_mode || showing(now_playing, NOW_PLAYING_FEEDBACK_VOLUME))) {
         StringBuilder label = string_builder_make(elapsed, sizeof elapsed);
         string_builder_append(&label, "Volume");
         StringBuilder level = string_builder_make(remaining, sizeof remaining);
@@ -712,6 +756,15 @@ static void draw_details(const NowPlayingScreen *now_playing, Canvas *canvas)
     TextStyle style = {.font = theme->fonts.small, .color = theme->colors.text_tertiary};
     char detail[STATUS_CAPACITY];
     now_playing_detail_text(&now_playing->status, detail, sizeof detail);
+    if (is_portrait && now_playing->controls_active && !now_playing->scrubbing &&
+        now_playing->now_ms < now_playing->controls_active_until_ms &&
+        now_playing->selected_button == MODE_CONTROL) {
+        StringBuilder b = string_builder_make(detail, sizeof detail);
+        string_builder_append(&b, now_playing->status.repeat != REPEAT_OFF
+            ? REPEAT_TEXT[now_playing->status.repeat]
+            : now_playing->status.shuffle != SHUFFLE_OFF
+                ? SHUFFLE_TEXT[now_playing->status.shuffle] : "Normal");
+    }
     if (detail[0] != '\0') {
         Rect area = is_portrait ? line_area(theme, PORTRAIT_DETAIL_TOP, SMALL_LINE_HEIGHT)
                                 : column_area(now_playing, DETAIL_TOP, SMALL_LINE_HEIGHT);
@@ -724,7 +777,13 @@ static void draw_details(const NowPlayingScreen *now_playing, Canvas *canvas)
     modes_text(&now_playing->status, modes, sizeof modes);
     if (now_playing->scrubbing) {
         StringBuilder seeking = string_builder_make(modes, sizeof modes);
-        string_builder_append(&seeking, "Seeking \xC2\xB7 Play to jump");
+        string_builder_append(&seeking, "Wheel: Seek | OK: Jump");
+    }
+    if (!now_playing->scrubbing && is_portrait && now_playing->controls_active &&
+        now_playing->now_ms < now_playing->controls_active_until_ms &&
+        now_playing->selected_button == SEEK_CONTROL) {
+        StringBuilder hint = string_builder_make(modes, sizeof modes);
+        string_builder_append(&hint, "OK: Seek track");
     }
     if (modes[0] != '\0') {
         Rect modes_area = is_portrait ? line_area(theme, PORTRAIT_MODES_TOP, SMALL_LINE_HEIGHT)
@@ -768,9 +827,10 @@ static void draw_badge(const NowPlayingScreen *now_playing, Canvas *canvas)
     if (!is_portrait && !current_cover(now_playing, &cover)) {
         return;
     }
+    int cover_size = is_portrait ? PORTRAIT_COVER_SIZE : COVER_FULL_SIZE;
     int center_x = is_portrait ? theme->metrics.screen_width / 2
-                               : theme->metrics.padding + COVER_FULL_SIZE / 2;
-    int center_y = (is_portrait ? PORTRAIT_COVER_TOP : COVER_TOP) + COVER_FULL_SIZE / 2;
+                               : theme->metrics.padding + cover_size / 2;
+    int center_y = (is_portrait ? PORTRAIT_COVER_TOP : COVER_TOP) + cover_size / 2;
     Rect badge = {center_x - BADGE_SIZE / 2, center_y - BADGE_SIZE / 2, BADGE_SIZE, BADGE_SIZE};
     Rect icon = {center_x - BADGE_ICON_SIZE / 2, center_y - BADGE_ICON_SIZE / 2, BADGE_ICON_SIZE,
                  BADGE_ICON_SIZE};
@@ -788,40 +848,39 @@ static void draw_nothing_playing(const Theme *theme, Canvas *canvas)
 
 static void draw_rounded_pill(Canvas *canvas, Rect r, Color fill, Color border, Color top_shine)
 {
-    canvas_fill_rect(canvas, (Rect){r.x + 3, r.y, r.width - 6, r.height}, fill);
-    canvas_fill_rect(canvas, (Rect){r.x, r.y + 3, 3, r.height - 6}, fill);
-    canvas_fill_rect(canvas, (Rect){r.x + r.width - 3, r.y + 3, 3, r.height - 6}, fill);
-
-    canvas_fill_rect(canvas, (Rect){r.x + 2, r.y + 1, r.width - 4, 1}, fill);
-    canvas_fill_rect(canvas, (Rect){r.x + 1, r.y + 2, r.width - 2, 1}, fill);
-    canvas_fill_rect(canvas, (Rect){r.x + 1, r.y + r.height - 3, r.width - 2, 1}, fill);
-    canvas_fill_rect(canvas, (Rect){r.x + 2, r.y + r.height - 2, r.width - 4, 1}, fill);
-
-    canvas_fill_rect(canvas, (Rect){r.x + 2, r.y, r.width - 4, 1}, top_shine);
-    canvas_fill_rect(canvas, (Rect){r.x + 1, r.y + 1, 1, 1}, top_shine);
-    canvas_fill_rect(canvas, (Rect){r.x + r.width - 2, r.y + 1, 1, 1}, top_shine);
-
-    canvas_fill_rect(canvas, (Rect){r.x + 2, r.y + r.height - 1, r.width - 4, 1}, border);
-    canvas_fill_rect(canvas, (Rect){r.x + 1, r.y + r.height - 2, 1, 1}, border);
-    canvas_fill_rect(canvas, (Rect){r.x + r.width - 2, r.y + r.height - 2, 1, 1}, border);
-
-    canvas_fill_rect(canvas, (Rect){r.x, r.y + 3, 1, r.height - 6}, border);
-    canvas_fill_rect(canvas, (Rect){r.x + r.width - 1, r.y + 3, 1, r.height - 6}, border);
+    static const int8_t PARTS[][5] = {
+        {3, 0, -6, 0, 0}, {0, 3, 3, -6, 0}, {-3, 3, 3, -6, 0},
+        {2, 1, -4, 1, 0}, {1, 2, -2, 1, 0}, {1, -3, -2, 1, 0}, {2, -2, -4, 1, 0},
+        {2, 0, -4, 1, 2}, {1, 1, 1, 1, 2}, {-2, 1, 1, 1, 2},
+        {2, -1, -4, 1, 1}, {1, -2, 1, 1, 1}, {-2, -2, 1, 1, 1},
+        {0, 3, 1, -6, 1}, {-1, 3, 1, -6, 1},
+    };
+    Color colors[] = {fill, border, top_shine};
+    for (unsigned i = 0; i < sizeof PARTS / sizeof PARTS[0]; i++) {
+        const int8_t *part = PARTS[i];
+        Rect area = {r.x + part[0] + (part[0] < 0 ? r.width : 0),
+                     r.y + part[1] + (part[1] < 0 ? r.height : 0),
+                     part[2] + (part[2] <= 0 ? r.width : 0),
+                     part[3] + (part[3] <= 0 ? r.height : 0)};
+        canvas_fill_rect(canvas, area, colors[(unsigned)part[4]]);
+    }
 }
 
-static void draw_modern_speaker(Canvas *canvas, Rect area, Color color)
+static void draw_mode_icon(Canvas *canvas, int x, int y, int mode, Color color)
 {
-    int cx = area.x + (area.width - 13) / 2;
-    int cy = area.y + (area.height - 10) / 2;
-    canvas_fill_rect(canvas, (Rect){cx, cy + 2, 3, 6}, color);
-    canvas_fill_rect(canvas, (Rect){cx + 3, cy + 1, 1, 8}, color);
-    canvas_fill_rect(canvas, (Rect){cx + 4, cy, 2, 10}, color);
-    canvas_fill_rect(canvas, (Rect){cx + 8, cy + 3, 1, 4}, color);
-    canvas_fill_rect(canvas, (Rect){cx + 7, cy + 2, 1, 1}, color);
-    canvas_fill_rect(canvas, (Rect){cx + 7, cy + 7, 1, 1}, color);
-    canvas_fill_rect(canvas, (Rect){cx + 11, cy + 1, 1, 8}, color);
-    canvas_fill_rect(canvas, (Rect){cx + 10, cy, 1, 1}, color);
-    canvas_fill_rect(canvas, (Rect){cx + 10, cy + 9, 1, 1}, color);
+    static const uint16_t PIXELS[5][12] = {
+    {0x0000u, 0x0000u, 0x0200u, 0x0400u, 0x0800u, 0x1FFFu, 0x0800u, 0x0400u, 0x0200u, 0x0000u, 0x0000u, 0x0000u},
+    {0x0400u, 0x0800u, 0x1E0Fu, 0x0910u, 0x04A0u, 0x0240u, 0x0240u, 0x04A0u, 0x0910u, 0x1E0Fu, 0x0800u, 0x0400u},
+    {0x0400u, 0x0800u, 0x1FFCu, 0x0802u, 0x0401u, 0x1201u, 0x1009u, 0x1004u, 0x0802u, 0x07FFu, 0x0002u, 0x0004u},
+    {0x0400u, 0x0800u, 0x1FFCu, 0x0802u, 0x0441u, 0x1261u, 0x1049u, 0x1044u, 0x08E2u, 0x07FFu, 0x0002u, 0x0004u},
+    {0x0430u, 0x0838u, 0x08BFu, 0x093Fu, 0x093Fu, 0x093Fu, 0x093Fu, 0x08BFu, 0x0838u, 0x0430u, 0x0000u, 0x0000u}
+    };
+    for (int row = 0; row < 12; row++) {
+        for (int col = 0; col < 14; col++) {
+            if ((PIXELS[mode][row] & (1u << col)) != 0)
+                canvas_fill_rect(canvas, (Rect){x + col, y + row, 1, 1}, color);
+        }
+    }
 }
 
 static void draw_controls(const NowPlayingScreen *now_playing, Canvas *canvas)
@@ -831,27 +890,30 @@ static void draw_controls(const NowPlayingScreen *now_playing, Canvas *canvas)
         return;
     }
     bool active = now_playing->controls_active && (now_playing->now_ms < now_playing->controls_active_until_ms);
-    if (!active && !now_playing->volume_mode) {
+    if (now_playing->scrubbing || (active && now_playing->selected_button == SEEK_CONTROL) ||
+        (!active && !now_playing->volume_mode)) {
         return;
     }
 
     enum {
         BTN_TOP = 258,
         BTN_HEIGHT = 22,
-        BTN_SMALL_W = 36,
-        BTN_PLAY_W = 42,
+        BTN_SMALL_W = 34,
         BTN_GAP = 10,
-        BTN_START_X = 30,
-        BTN_COUNT = 4
+        BTN_START_X = 15,
+        BTN_COUNT = 5
     };
 
+    canvas_fill_rect(canvas, (Rect){0, BTN_TOP, theme->metrics.screen_width, BTN_HEIGHT},
+                     theme->colors.background);
     int x = BTN_START_X;
     for (int i = 0; i < BTN_COUNT; i++) {
-        int w = (i == 1) ? BTN_PLAY_W : BTN_SMALL_W;
+        int w = BTN_SMALL_W;
+        int control = i;
         Rect btn = {x, BTN_TOP, w, BTN_HEIGHT};
         x += w + BTN_GAP;
 
-        bool is_sel = (now_playing->selected_button == i);
+        bool is_sel = (now_playing->selected_button == control);
         Color fill = is_sel ? theme->colors.selection_background : COLOR_RGB(24, 25, 31);
         Color border = is_sel ? theme->colors.selection_top : COLOR_RGB(42, 44, 52);
         Color shine = is_sel ? theme->colors.selection_shine : COLOR_RGB(58, 62, 74);
@@ -859,7 +921,15 @@ static void draw_controls(const NowPlayingScreen *now_playing, Canvas *canvas)
 
         draw_rounded_pill(canvas, btn, fill, border, shine);
 
-        switch (i) {
+        switch (control) {
+        case MODE_CONTROL: {
+            int mode = now_playing->status.repeat == REPEAT_ONE ? 3
+                       : now_playing->status.repeat == REPEAT_ALL ? 2
+                       : now_playing->status.shuffle != SHUFFLE_OFF ? 1 : 0;
+            Color color = !is_sel && mode != 0 ? theme->colors.selection_background : icon_color;
+            draw_mode_icon(canvas, btn.x + (btn.width - 14) / 2, btn.y + 5, mode, color);
+            break;
+        }
         case 0: {
             Rect icon_area = {btn.x + (btn.width - 12) / 2, btn.y + (btn.height - 10) / 2, 12, 10};
             icon_draw_previous(canvas, icon_area, icon_color);
@@ -881,8 +951,8 @@ static void draw_controls(const NowPlayingScreen *now_playing, Canvas *canvas)
             break;
         }
         case 3: {
-            Rect icon_area = {btn.x + (btn.width - 13) / 2, btn.y + (btn.height - 10) / 2, 13, 10};
-            draw_modern_speaker(canvas, icon_area, icon_color);
+            draw_mode_icon(canvas, btn.x + (btn.width - 13) / 2,
+                           btn.y + (btn.height - 10) / 2, 4, icon_color);
             break;
         }
         }

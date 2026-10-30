@@ -40,6 +40,12 @@ add_library(echo_library_fixtures STATIC
     library/big_library.c
     library/spoken_library.c
 )
+
+if(ECHO_BOARD STREQUAL "neo" OR ECHO_BOARD STREQUAL "neo-sim")
+    add_executable(neo_render_ui ../tools/render_ui_screens.c app/fake_hal.c)
+    target_include_directories(neo_render_ui PRIVATE ${PROJECT_SOURCE_DIR}/src/app app)
+    target_link_libraries(neo_render_ui PRIVATE echo_app echo_library_fixtures echo_options)
+endif()
 target_include_directories(echo_library_fixtures PUBLIC library)
 target_compile_definitions(echo_library_fixtures PRIVATE
     ECHO_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
@@ -168,9 +174,16 @@ echo_add_unit_test(NAME test_cover_flow_order
 )
 echo_add_unit_test(NAME test_now_playing_screen
     SOURCES app/test_now_playing_screen.c app/fake_hal.c
-    LIBRARIES echo_app echo_library_scan
+    LIBRARIES echo_app echo_library_fixtures
     PRIVATE_INCLUDES ${PROJECT_SOURCE_DIR}/src/app
 )
+if(ECHO_BOARD STREQUAL "neo" OR ECHO_BOARD STREQUAL "neo-sim")
+    echo_add_unit_test(NAME test_neo_ok_controls
+        SOURCES app/test_neo_ok_controls.c app/fake_hal.c
+        LIBRARIES echo_app echo_library_fixtures
+        PRIVATE_INCLUDES ${PROJECT_SOURCE_DIR}/src/app
+    )
+endif()
 echo_add_unit_test(NAME test_diagnostics_values
     SOURCES app/test_diagnostics_values.c app/fake_hal.c
     LIBRARIES echo_app echo_library_scan

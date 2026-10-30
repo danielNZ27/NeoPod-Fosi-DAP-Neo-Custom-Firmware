@@ -173,6 +173,15 @@ static MenuItem shelf_item(AppScreens *screens, AppScreensContext context, Spoke
 static void build_home(AppScreens *screens, AppScreensContext context)
 {
     const Theme *theme = context.theme;
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    screens->home_items[0] = app_screens_open_item("Now Playing", &screens->now_playing.screen);
+    screens->home_items[0].shown = player_has_track;
+    screens->home_items[0].shown_context = context.player;
+    screens->home_items[1] = app_screens_open_item("Music", &screens->music.screen);
+    screens->home_items[2] = shelf_item(screens, context, SPOKEN_AUDIOBOOK);
+    screens->home_items[3] = shelf_item(screens, context, SPOKEN_PODCAST);
+    screens->home_items[4] = app_screens_open_item("Settings", &screens->settings.menu.screen);
+#else
     screens->home_items[0] = app_screens_open_item("Music", &screens->music.screen);
     screens->home_items[1] = shelf_item(screens, context, SPOKEN_AUDIOBOOK);
     screens->home_items[2] = shelf_item(screens, context, SPOKEN_PODCAST);
@@ -181,6 +190,7 @@ static void build_home(AppScreens *screens, AppScreensContext context)
     screens->home_items[5] = app_screens_open_item("Now Playing", &screens->now_playing.screen);
     screens->home_items[5].shown = player_has_track;
     screens->home_items[5].shown_context = context.player;
+#endif
     home_art_init(&screens->home_art, context.covers, context.store, context.player, theme);
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
     const char *title = "NeoPod";
@@ -214,7 +224,9 @@ Screen *app_screens_init(AppScreens *screens, AppScreensContext context)
     now_playing_screen_init(&screens->now_playing, now_playing);
     build_music(screens, context);
     build_settings(screens, context);
+#if !defined(ECHO_BOARD_NEO) && !defined(ECHO_NEO_SIM)
     diagnostics_menu_build(screens, context.options, theme);
+#endif
     build_home(screens, context);
     return &screens->home.screen;
 }
@@ -237,7 +249,11 @@ int app_screens_start_path(AppScreens *screens, StartScreen start, Screen **path
     case START_MAIN_MENU:
         return 0;
     case START_NOW_PLAYING:
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+        list_view_select(&screens->home.list, 0, 0);
+#else
         list_view_select(&screens->home.list, 1, 0);
+#endif
         path[0] = &screens->now_playing.screen;
         return 1;
     case START_ALBUMS:

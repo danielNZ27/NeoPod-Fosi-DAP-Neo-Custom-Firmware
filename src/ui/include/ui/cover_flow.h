@@ -6,7 +6,7 @@
 
 enum {
     COVER_FLOW_ONE = 256,
-    COVER_FLOW_REACH = 3,
+    COVER_FLOW_REACH = 2,
     COVER_FLOW_MAX_VISIBLE = 2 * COVER_FLOW_REACH + 1
 };
 

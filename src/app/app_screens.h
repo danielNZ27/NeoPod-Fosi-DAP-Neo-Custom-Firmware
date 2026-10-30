@@ -26,7 +26,11 @@
 #include "ui/toast.h"
 
 enum {
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    HOME_ITEM_COUNT = 5,
+#else
     HOME_ITEM_COUNT = 6,
+#endif
     SHELF_COUNT = 2,
     MUSIC_ITEM_COUNT = 9,
     DIAGNOSTICS_ITEM_COUNT = 33,
