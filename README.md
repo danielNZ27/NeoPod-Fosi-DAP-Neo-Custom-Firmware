@@ -124,6 +124,12 @@ NeoPod adapts this system for the Fosi Audio DAP Neo's Rockchip platform, ST7789
 
 ---
 
+## 🤖 AI Disclosure
+
+This project is created with the assistance of AI tools. 
+
+---
+
 ## 📄 License
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE) in accordance with the upstream EchoPod project.
