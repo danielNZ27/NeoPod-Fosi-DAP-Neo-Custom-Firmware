@@ -1,4 +1,5 @@
 #include "device/bt_module.h"
+#include <stddef.h>
 
 enum {
     ADDRESS_SIZE = HAL_BLUETOOTH_ADDRESS_SIZE,
@@ -64,7 +65,7 @@ static uint32_t scan_frame_size(const uint8_t *bytes, uint32_t available)
 
 static uint32_t status_frame_size(const uint8_t *bytes, uint32_t available)
 {
-    if (available < STATUS_FRAME_SIZE || bytes[2] != 'O') {
+    if (available < STATUS_FRAME_SIZE || (bytes[2] != 'O' && bytes[2] != 'o')) {
         return STATUS_FRAME_SIZE;
     }
     if (available < CONNECTED_HEADER_SIZE || !is_digit(bytes[3]) || !is_digit(bytes[4])) {
@@ -177,11 +178,13 @@ static void handle_ready(BtModule *module, uint8_t version, uint32_t now_ms)
 static void handle_status(BtModule *module, const uint8_t *bytes, uint32_t size, uint32_t now_ms)
 {
     module->status.link_status = (char)bytes[2];
-    if (bytes[2] == 'O') {
+    if (bytes[2] == 'O' || bytes[2] == 'o') {
+        if (size < CONNECTED_HEADER_SIZE + ADDRESS_SIZE) return;
         copy_device(&module->status.connected, bytes + CONNECTED_HEADER_SIZE,
                     size - CONNECTED_HEADER_SIZE);
         set_state(module, HAL_BLUETOOTH_CONNECTED, now_ms);
-    } else if (module->status.state == HAL_BLUETOOTH_CONNECTED) {
+    } else if (module->status.state == HAL_BLUETOOTH_CONNECTED &&
+               (bytes[2] == 'S' || bytes[2] == 'L' || bytes[2] == 'I')) {
         set_state(module, HAL_BLUETOOTH_READY, now_ms);
     }
 }
@@ -347,17 +350,33 @@ bool bt_module_scan(BtModule *module, uint32_t now_ms, BtModuleFrame *frame)
     return command(frame, 'S');
 }
 
+bool bt_module_stop_scan(BtModule *module, uint32_t now_ms, BtModuleFrame *frame)
+{
+    if (module->status.state != HAL_BLUETOOTH_SCANNING) return false;
+    set_state(module, HAL_BLUETOOTH_READY, now_ms);
+    return command(frame, 'P');
+}
+
 bool bt_module_connect(BtModule *module, uint8_t index, uint32_t now_ms, BtModuleFrame *frame)
+{
+    if (index >= module->status.device_count) return false;
+    HalBluetoothDevice device = module->status.devices[index];
+    return bt_module_connect_device(module, &device, false, now_ms, frame);
+}
+
+bool bt_module_connect_device(BtModule *module, const HalBluetoothDevice *device,
+                              bool reconnect, uint32_t now_ms, BtModuleFrame *frame)
 {
     HalBluetoothState state = module->status.state;
     bool idle = state == HAL_BLUETOOTH_READY || state == HAL_BLUETOOTH_SCANNING;
-    if (!idle || index >= module->status.device_count) {
+    if (!idle || device == NULL) {
         return false;
     }
-    module->target = module->status.devices[index];
+    module->target = *device;
+    module->reconnecting = reconnect;
     module->status.pairing = HAL_BLUETOOTH_PAIRING_NONE;
     start_waiting(module, HAL_BLUETOOTH_CONNECTING, now_ms);
-    return address_command(frame, 'L', module->target.address);
+    return address_command(frame, reconnect ? 'H' : 'L', module->target.address);
 }
 
 bool bt_module_disconnect(BtModule *module, uint32_t now_ms, BtModuleFrame *frame)
@@ -395,7 +414,7 @@ static bool follow_connect(BtModule *module, uint32_t now_ms, BtModuleFrame *fra
     }
     if (!module->answered && !module->repeated && elapsed >= BT_MODULE_CONNECT_RETRY_MS) {
         module->repeated = true;
-        return address_command(frame, 'H', module->target.address);
+        return address_command(frame, module->reconnecting ? 'H' : 'L', module->target.address);
     }
     return false;
 }
@@ -454,7 +473,7 @@ bool bt_module_set_stream(BtModule *module, bool on, uint32_t now_ms, BtModuleFr
         return false;
     }
     module->status.streaming = on;
-    module->play_notice = on ? PLAY_NOTICE : PAUSE_NOTICE;
+    module->play_notice = 0;
     module->stream_changed_ms = now_ms;
     *frame = (BtModuleFrame){.bytes = {'C', 'Y', '0', on ? STREAM_ON_LEVEL : 0, 0},
                              .length = COMMAND_SIZE};

@@ -55,8 +55,11 @@ typedef struct HalBluetoothStatus {
 
 void hal_bluetooth_set_power(bool on);
 void hal_bluetooth_scan(void);
+void hal_bluetooth_stop_scan(void);
 void hal_bluetooth_connect(uint8_t index);
+void hal_bluetooth_connect_device(const HalBluetoothDevice *device, bool reconnect);
 void hal_bluetooth_disconnect(void);
 void hal_bluetooth_set_stream(bool on);
 void hal_bluetooth_service(void);
+void hal_bluetooth_save_trace(void);
 const HalBluetoothStatus *hal_bluetooth_status(void);

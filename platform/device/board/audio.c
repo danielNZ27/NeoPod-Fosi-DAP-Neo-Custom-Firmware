@@ -10,6 +10,7 @@
 #include "dac.h"
 #include "device/audio_engine.h"
 #include "device/audio_math.h"
+#include "device/pcm_transition.h"
 #include "device/dac_sequence.h"
 #include "device/dma_loop.h"
 #include "device/flac_source.h"
@@ -119,6 +120,11 @@ static bool paused_before_clock_change;
 static uint32_t position_before_clock_change;
 static AudioEngine engine;
 static DmaItem items[RING_BLOCKS];
+static DmaItem silence_item, resume_item;
+static uint32_t silence_words[64];
+static bool silence_active;
+static bool quiet_tail_valid;
+static uint32_t quiet_tail_end;
 static HalFile file;
 static bool engine_ready;
 static bool path_up;
@@ -384,10 +390,93 @@ static void serve_fade(void)
     }
 }
 
+static void bluetooth_fade_in(uint32_t start, uint32_t frames)
+{
+#ifdef ECHO_BOARD_NEO
+    if (board_bluetooth_routed() || silence_active)
+        pcm_transition(music_ring, RING_FRAMES, start, frames, true);
+#else
+    (void)start;
+    (void)frames;
+#endif
+}
+
+void board_audio_prepare_bluetooth_start(void)
+{
+#ifdef ECHO_BOARD_NEO
+    if (!transferring || !engine_ready || tone_active || stream_service != NULL ||
+        audio_engine_status(&engine).state != AUDIO_ENGINE_PLAYING) return;
+    update_consumed();
+    uint32_t guard = path_rate / 200;
+    uint32_t quiet = path_rate / 100;
+    uint32_t ramp = path_rate / 100;
+    if (audio_engine_buffered(&engine, consumed) <= guard + quiet + ramp) return;
+    uint32_t start = (last_position + guard) % RING_FRAMES;
+    pcm_quiet_tail(music_ring, RING_FRAMES, start, 0, quiet);
+    pcm_transition(music_ring, RING_FRAMES, (start + quiet) % RING_FRAMES, ramp, true);
+    board_delay_ms(7);
+#endif
+}
+
+static void bluetooth_quiet(bool keep_clock)
+{
+    quiet_tail_valid = false;
+#ifdef ECHO_BOARD_NEO
+    if (board_bluetooth_routed()) {
+        if (transferring && engine_ready && !tone_active && stream_service == NULL &&
+            audio_engine_status(&engine).state != AUDIO_ENGINE_PAUSED) {
+            update_consumed();
+            uint32_t available = audio_engine_buffered(&engine, consumed);
+            uint32_t guard = path_rate / 200; /* Stay ahead of the live DMA reader. */
+            uint32_t frames = path_rate / 100;
+            if (available > guard + frames) {
+                uint32_t at = (last_position + guard) % RING_FRAMES;
+                pcm_quiet_tail(music_ring, RING_FRAMES, at, frames, path_rate / 100);
+                quiet_tail_end = (at + frames + path_rate / 100) % RING_FRAMES;
+                quiet_tail_valid = true;
+                board_delay_ms(17);
+                update_consumed();
+            }
+        }
+        if (keep_clock) return;
+        board_bluetooth_audio_mute(true);
+        /* Send CY0/0 and let the module mute before stopping its I2S source. */
+        board_delay_ms(20);
+    } else {
+        board_bluetooth_audio_mute(true);
+    }
+#endif
+    (void)keep_clock;
+}
+
+static bool start_silence(void)
+{
+    dmac_suspend();
+    update_consumed();
+    if (engine_ready) audio_engine_observe(&engine, consumed);
+    dmac_stop();
+    silence_item = dma_loop_item((uint32_t)(uintptr_t)silence_words, 64,
+                                  (uint32_t)(uintptr_t)&silence_item);
+    silence_active = dmac_start_loop(&silence_item);
+    transferring = false;
+    if (silence_active) dac_path_start_transfer();
+    return silence_active;
+}
+
 static void stop_transfer(void)
 {
     if (!transferring) {
         return;
+    }
+    bool keep_clock = board_bluetooth_routed() && engine_ready && !tone_active && stream_service == NULL;
+    bluetooth_quiet(keep_clock);
+    if (keep_clock && start_silence()) {
+        dac_path_set_muted(true);
+        return;
+    }
+    if (keep_clock) {
+        board_bluetooth_audio_mute(true);
+        board_delay_ms(20);
     }
     dac_path_set_muted(true);
     dac_path_stop_transfer();
@@ -398,6 +487,14 @@ static void stop_transfer(void)
 static void stop_path(void)
 {
     stop_transfer();
+    if (path_up && board_bluetooth_routed()) {
+        board_bluetooth_audio_mute(true);
+        board_delay_ms(20);
+    }
+    if (silence_active) {
+        dmac_stop();
+        silence_active = false;
+    }
     if (path_up) {
         dac_path_stop();
         path_up = false;
@@ -425,6 +522,12 @@ static bool ensure_path(uint32_t rate)
 
 static bool start_transfer(uint32_t words, bool audible)
 {
+    if (audible) bluetooth_fade_in(0, path_rate / 100);
+    if (silence_active) {
+        dmac_stop();
+        silence_active = false;
+    }
+    quiet_tail_valid = false;
     ring_words = words;
     consumed = 0;
     last_position = 0;
@@ -438,6 +541,7 @@ static bool start_transfer(uint32_t words, bool audible)
     dac_path_set_fade_service(serve_fade);
     if (audible) {
         dac_path_set_muted(false);
+        board_bluetooth_audio_mute(false);
     }
     return true;
 }
@@ -457,6 +561,15 @@ static bool start_output(bool audible)
     stats = (HalAudioStats){0};
     output_started_us = hal_clock_microseconds();
     stopped_waiting = false;
+    if (!audible && board_bluetooth_routed()) {
+        quiet_tail_valid = false;
+        ring_words = RING_WORDS;
+        consumed = last_position = 0;
+        if (!dma_ring_items(items, RING_BLOCKS, ring_address(), BLOCK_WORDS, (uint32_t)(uintptr_t)items))
+            return false;
+        if (silence_active) return true;
+        return start_silence();
+    }
     return start_transfer(RING_WORDS, audible);
 }
 
@@ -508,7 +621,13 @@ void hal_audio_queue_next(const char *path, uint32_t token)
 void hal_audio_pause(void)
 {
     ensure_engine();
+    if (transferring && board_bluetooth_routed()) {
+        stop_transfer();
+        audio_engine_pause(&engine);
+        return;
+    }
     if (transferring) {
+        bluetooth_quiet(false);
         dac_path_set_muted(true);
         dmac_suspend();
     }
@@ -518,11 +637,36 @@ void hal_audio_pause(void)
 void hal_audio_resume(void)
 {
     ensure_engine();
+    audio_engine_resume(&engine);
+    if (silence_active) {
+        uint32_t fade_start = last_position;
+        if (quiet_tail_valid && (quiet_tail_end + RING_FRAMES - last_position) % RING_FRAMES <= path_rate / 50)
+            fade_start = quiet_tail_end;
+        bluetooth_fade_in(fade_start, path_rate / 100);
+        quiet_tail_valid = false;
+        dmac_stop();
+        silence_active = false;
+        if (!dma_ring_resume_item(&resume_item, RING_BLOCKS, ring_address(), BLOCK_WORDS,
+                                  (uint32_t)(uintptr_t)items, last_position * WORDS_PER_FRAME) ||
+            !dmac_start_loop(&resume_item)) {
+            output_failed = true;
+            audio_engine_stop(&engine);
+            stop_path();
+            return;
+        }
+        transferring = true;
+        dac_path_start_transfer();
+        dac_path_set_muted(false);
+        board_bluetooth_audio_mute(false);
+        return;
+    }
     if (transferring) {
+        uint32_t position = dma_loop_position(dmac_source(), ring_address(), ring_words) / WORDS_PER_FRAME;
+        bluetooth_fade_in(position, path_rate / 100);
         dmac_resume();
         dac_path_set_muted(false);
+        board_bluetooth_audio_mute(false);
     }
-    audio_engine_resume(&engine);
 }
 
 static void seek_to(uint32_t position_ms, bool paused)
@@ -537,7 +681,7 @@ static void seek_to(uint32_t position_ms, bool paused)
     if (paused) {
         audio_engine_pause(&engine);
         dac_path_set_muted(true);
-        dmac_suspend();
+        if (!silence_active) dmac_suspend();
     }
 }
 
@@ -756,6 +900,10 @@ void hal_audio_service(void)
         stream_service();
         return;
     }
+    if (silence_active) {
+        shut_down_when_idle();
+        return;
+    }
     if (!engine_ready || !transferring || tone_active) {
         return;
     }
@@ -926,8 +1074,8 @@ bool board_audio_stream_play(void)
 
 void board_audio_stream_pause(void)
 {
-    clear_ring();
     stop_transfer();
+    clear_ring();
 }
 
 uint32_t board_audio_stream_consumed(void)

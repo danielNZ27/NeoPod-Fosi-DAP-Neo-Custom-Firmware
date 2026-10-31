@@ -1,285 +1,155 @@
 #include "bluetooth_screen.h"
-
 #include <stddef.h>
-
-#include "core/string_builder.h"
+#include "bluetooth_manager.h"
 #include "ui/header.h"
 #include "ui/label.h"
+#include "ui/list_navigation.h"
 #include "ui/navigation.h"
 
-enum {
-    FIRST_LINE_TOP = 28,
-    LINE_HEIGHT = 15
-};
-
-static const char SEPARATOR[] = " · ";
-
-static const char *state_text(HalBluetoothState state)
+static int count(const void *context)
 {
-    switch (state) {
-    case HAL_BLUETOOTH_STARTING:
-        return "Starting";
-    case HAL_BLUETOOTH_NO_REPLY:
-        return "No reply";
-    case HAL_BLUETOOTH_READY:
-        return "Ready";
-    case HAL_BLUETOOTH_SCANNING:
-        return "Scanning";
-    case HAL_BLUETOOTH_CONNECTING:
-        return "Connecting";
-    case HAL_BLUETOOTH_CONNECTED:
-        return "Connected";
-    default:
-        return "Off";
+    const BluetoothScreen *s = context;
+    switch (s->page) {
+    case BLUETOOTH_MAIN: return 3;
+    case BLUETOOTH_PAIR: return 2 + hal_bluetooth_status()->device_count;
+    case BLUETOOTH_SAVED: return bluetooth_manager_count() ? bluetooth_manager_count() : 1;
+    default: return 2;
     }
 }
-
-static const char *pairing_text(HalBluetoothPairing pairing)
+static const char *label(const void *context, int index)
 {
-    switch (pairing) {
-    case HAL_BLUETOOTH_PAIRED:
-        return "Paired";
-    case HAL_BLUETOOTH_PAIRING_FAILED:
-        return "Pairing failed";
-    default:
-        return NULL;
-    }
-}
-
-static void append_part(StringBuilder *builder, const char *part)
-{
-    if (part != NULL && part[0] != '\0') {
-        string_builder_append(builder, SEPARATOR);
-        string_builder_append(builder, part);
-    }
-}
-
-static void write_state(const HalBluetoothStatus *status, char *text)
-{
-    StringBuilder builder = string_builder_make(text, BLUETOOTH_SCREEN_LINE_CAPACITY);
-    string_builder_append(&builder, state_text(status->state));
-    if (status->state == HAL_BLUETOOTH_CONNECTED) {
-        append_part(&builder, status->connected.name);
-    }
-    append_part(&builder, status->streaming ? "Streaming" : NULL);
-    if (status->version != '\0') {
-        string_builder_append(&builder, SEPARATOR);
-        string_builder_append_char(&builder, 'v');
-        string_builder_append_char(&builder, status->version);
-    }
-    if (status->link_status != '\0') {
-        string_builder_append(&builder, SEPARATOR);
-        string_builder_append(&builder, "status ");
-        string_builder_append_char(&builder, status->link_status);
-    }
-    append_part(&builder, pairing_text(status->pairing));
-}
-
-static void write_link(const HalBluetoothLink *link, char *text)
-{
-    StringBuilder builder = string_builder_make(text, BLUETOOTH_SCREEN_LINE_CAPACITY);
-    string_builder_append(&builder, "RX ");
-    string_builder_append_unsigned(&builder, link->received);
-    string_builder_append(&builder, SEPARATOR);
-    string_builder_append_unsigned(&builder, link->frames);
-    string_builder_append(&builder, " frames");
-    string_builder_append(&builder, SEPARATOR);
-    string_builder_append(&builder, "OE ");
-    string_builder_append_unsigned(&builder, link->overruns);
-    string_builder_append(&builder, SEPARATOR);
-    string_builder_append(&builder, "FIFO ");
-    string_builder_append_unsigned(&builder, link->fifo_peak);
-    string_builder_append_char(&builder, '/');
-    string_builder_append_unsigned(&builder, link->fifo_depth);
-}
-
-static char hex_digit(uint8_t value)
-{
-    return (char)(value < 10 ? '0' + value : 'A' + value - 10);
-}
-
-static void write_recent(const HalBluetoothLink *link, char *text)
-{
-    StringBuilder builder = string_builder_make(text, BLUETOOTH_SCREEN_LINE_CAPACITY);
-    if (link->recent_length == 0) {
-        string_builder_append(&builder, "Nothing received");
-        return;
-    }
-    for (uint8_t index = 0; index < link->recent_length; index++) {
-        if (index > 0) {
-            string_builder_append_char(&builder, ' ');
-        }
-        string_builder_append_char(&builder, hex_digit(link->recent[index] >> 4));
-        string_builder_append_char(&builder, hex_digit(link->recent[index] & 0x0F));
-    }
-}
-
-static bool same_address(const HalBluetoothDevice *first, const HalBluetoothDevice *second)
-{
-    for (int index = 0; index < HAL_BLUETOOTH_ADDRESS_SIZE; index++) {
-        if (first->address[index] != second->address[index]) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static void write_device(const BluetoothScreen *bluetooth, const HalBluetoothStatus *status,
-                         uint8_t index, char *text)
-{
-    StringBuilder builder = string_builder_make(text, BLUETOOTH_SCREEN_LINE_CAPACITY);
-    if (index >= status->device_count) {
-        return;
-    }
-    const HalBluetoothDevice *device = &status->devices[index];
-    if (index == bluetooth->selected) {
-        string_builder_append(&builder, "› ");
-    }
-    string_builder_append_unsigned(&builder, (uint32_t)index + 1);
-    string_builder_append(&builder, ". ");
-    string_builder_append(&builder, device->name);
-    if (status->state == HAL_BLUETOOTH_CONNECTED && same_address(device, &status->connected)) {
-        string_builder_append(&builder, " ✓");
-    }
-}
-
-static void refresh(BluetoothScreen *bluetooth, const HalBluetoothStatus *status)
-{
-    if (bluetooth->selected >= status->device_count) {
-        bluetooth->selected = 0;
-    }
-    write_state(status, bluetooth->lines[0]);
-    write_link(&status->link, bluetooth->lines[1]);
-    write_recent(&status->link, bluetooth->lines[2]);
-    for (uint8_t index = 0; index < HAL_BLUETOOTH_DEVICE_CAPACITY; index++) {
-        write_device(bluetooth, status, index,
-                     bluetooth->lines[BLUETOOTH_SCREEN_STATUS_LINES + index]);
-    }
-}
-
-static void enter(void *context, uint32_t now_ms)
-{
-    BluetoothScreen *bluetooth = context;
-    (void)now_ms;
-    bluetooth->scanned = false;
-    bluetooth->selected = 0;
-    hal_bluetooth_set_power(true);
-    refresh(bluetooth, hal_bluetooth_status());
-}
-
-static void scan(BluetoothScreen *bluetooth)
-{
-    hal_bluetooth_scan();
-    bluetooth->scanned = true;
-}
-
-static void move_selection(BluetoothScreen *bluetooth, int step)
-{
-    uint8_t count = hal_bluetooth_status()->device_count;
-    if (count > 0) {
-        bluetooth->selected = (uint8_t)((bluetooth->selected + count + step) % count);
-    }
-}
-
-static void pair_or_scan(BluetoothScreen *bluetooth)
-{
+    const BluetoothScreen *s = context;
     const HalBluetoothStatus *status = hal_bluetooth_status();
-    if (status->state == HAL_BLUETOOTH_CONNECTED) {
-        hal_bluetooth_set_stream(!status->streaming);
-        return;
+    switch (s->page) {
+    case BLUETOOTH_MAIN: {
+        static const char *const rows[] = {"Bluetooth", "Pair new device", "Saved devices"};
+        return rows[index];
     }
-    if (status->device_count > 0) {
-        hal_bluetooth_connect(bluetooth->selected);
-        return;
+    case BLUETOOTH_PAIR:
+        if (index == 0) return status->state == HAL_BLUETOOTH_SCANNING ? "Searching..." : "Search again";
+        if (index == 1) return "Headphones: pairing mode";
+        return status->devices[index - 2].name;
+    case BLUETOOTH_SAVED: {
+        const HalBluetoothDevice *d = bluetooth_manager_device((uint8_t)index);
+        return d ? d->name : "No saved devices";
     }
-    scan(bluetooth);
+    case BLUETOOTH_DEVICE:
+        if (index == 1) return "Forget device";
+        return bluetooth_manager_is_connected(bluetooth_manager_device(s->device)) ? "Disconnect" : "Connect";
+    case BLUETOOTH_FORGET: return index == 0 ? "Cancel" : "Forget device";
+    }
+    return "";
 }
-
-static void disconnect_or_scan(BluetoothScreen *bluetooth)
+static const char *detail(const void *context, int index)
 {
-    HalBluetoothState state = hal_bluetooth_status()->state;
-    if (state == HAL_BLUETOOTH_CONNECTED || state == HAL_BLUETOOTH_CONNECTING) {
-        hal_bluetooth_disconnect();
-        return;
-    }
-    scan(bluetooth);
+    const BluetoothScreen *s = context;
+    if (s->page == BLUETOOTH_MAIN && index == 0) return bluetooth_manager_enabled() ? "On" : "Off";
+    const HalBluetoothDevice *d = NULL;
+    if (s->page == BLUETOOTH_SAVED) d = bluetooth_manager_device((uint8_t)index);
+    if (s->page == BLUETOOTH_PAIR && index >= 2) d = &hal_bluetooth_status()->devices[index - 2];
+    return bluetooth_manager_is_connected(d) ? "Connected" : NULL;
 }
-
-static void act(BluetoothScreen *bluetooth, NavigationIntent intent)
+static bool opens(const void *context, int index)
 {
-    switch (intent) {
-    case NAVIGATION_NEXT:
-        move_selection(bluetooth, 1);
-        break;
-    case NAVIGATION_PREVIOUS:
-        move_selection(bluetooth, -1);
-        break;
-    case NAVIGATION_SELECT:
-        pair_or_scan(bluetooth);
-        break;
-    case NAVIGATION_OPTIONS:
-        disconnect_or_scan(bluetooth);
-        break;
-    default:
-        break;
-    }
+    const BluetoothScreen *s = context;
+    return (s->page == BLUETOOTH_MAIN && index > 0) ||
+           (s->page == BLUETOOTH_SAVED && bluetooth_manager_count() > 0) ||
+           (s->page == BLUETOOTH_DEVICE && index == 1);
 }
-
-static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
+static void show(BluetoothScreen *s, BluetoothPage page)
 {
-    BluetoothScreen *bluetooth = context;
-    (void)now_ms;
-    ScreenAction exit = navigation_exit_action(event);
-    if (exit.type != SCREEN_ACTION_NONE) {
-        hal_bluetooth_set_power(false);
-        return exit;
+    s->page = page;
+    bluetooth_manager_pairing(page == BLUETOOTH_PAIR);
+    static const char *const titles[] = {"Bluetooth", "Pair device", "Devices", "Device", "Forget device?"};
+    s->screen.title = titles[page];
+    list_view_init(&s->list, &s->model, s->theme, s->now_ms);
+    s->list.visible_rows = (theme_content_area(s->theme).height - 34) / s->theme->metrics.row_height;
+}
+static ScreenAction select_row(void *context, int index)
+{
+    BluetoothScreen *s = context;
+    switch (s->page) {
+    case BLUETOOTH_MAIN:
+        if (index == 0) bluetooth_manager_set_enabled(!bluetooth_manager_enabled(), s->now_ms);
+        if (index == 1) {
+            if (!bluetooth_manager_enabled()) bluetooth_manager_set_enabled(true, s->now_ms);
+            s->scan_requested = true;
+            show(s, BLUETOOTH_PAIR);
+        }
+        if (index == 2) show(s, BLUETOOTH_SAVED);
+        break;
+    case BLUETOOTH_PAIR:
+        if (index == 0) s->scan_requested = true;
+        if (index >= 2) bluetooth_manager_pair((uint8_t)(index - 2), s->now_ms);
+        break;
+    case BLUETOOTH_SAVED:
+        if (bluetooth_manager_count()) { s->device = (uint8_t)index; show(s, BLUETOOTH_DEVICE); }
+        break;
+    case BLUETOOTH_DEVICE:
+        if (index == 1) show(s, BLUETOOTH_FORGET);
+        else if (bluetooth_manager_is_connected(bluetooth_manager_device(s->device))) bluetooth_manager_disconnect();
+        else bluetooth_manager_connect(s->device, s->now_ms);
+        break;
+    case BLUETOOTH_FORGET:
+        if (index == 0) show(s, BLUETOOTH_DEVICE);
+        else if (bluetooth_manager_forget(s->device)) show(s, BLUETOOTH_SAVED);
+        break;
     }
-    act(bluetooth, navigation_from_key(event).intent);
     return screen_action_none();
 }
-
+static void enter(void *context, uint32_t now_ms)
+{
+    BluetoothScreen *s = context;
+    s->now_ms = now_ms;
+    show(s, BLUETOOTH_MAIN);
+}
+static ScreenAction handle_key(void *context, KeyEvent event, uint32_t now_ms)
+{
+    BluetoothScreen *s = context;
+    s->now_ms = now_ms;
+    NavigationIntent intent = navigation_from_key(event).intent;
+    if (intent == NAVIGATION_HOME) { bluetooth_manager_pairing(false); return screen_action_pop_to_root(); }
+    if (intent == NAVIGATION_BACK) {
+        if (s->page == BLUETOOTH_MAIN) return screen_action_pop();
+        show(s, s->page == BLUETOOTH_FORGET ? BLUETOOTH_DEVICE : s->page == BLUETOOTH_DEVICE ? BLUETOOTH_SAVED : BLUETOOTH_MAIN);
+        return screen_action_none();
+    }
+    return list_navigation_handle(&s->list, event, now_ms, (ListSelection){.select = select_row, .context = s});
+}
 static void update(void *context, uint32_t now_ms)
 {
-    BluetoothScreen *bluetooth = context;
-    (void)now_ms;
-    if (!bluetooth->scanned && hal_bluetooth_status()->state == HAL_BLUETOOTH_READY) {
-        scan(bluetooth);
+    BluetoothScreen *s = context;
+    s->now_ms = now_ms;
+    if (s->page == BLUETOOTH_PAIR && s->scan_requested && hal_bluetooth_status()->state == HAL_BLUETOOTH_READY) {
+        bluetooth_manager_scan(); s->scan_requested = false;
     }
-    refresh(bluetooth, hal_bluetooth_status());
+    if (s->list.selected >= count(s)) list_view_select(&s->list, count(s) - 1, now_ms);
 }
-
 static void draw(void *context, Canvas *canvas)
 {
-    const BluetoothScreen *bluetooth = context;
-    const Theme *theme = bluetooth->theme;
-    Rect content = theme_content_area(theme);
-    header_draw(canvas, theme, bluetooth->screen.title);
-    for (int index = 0; index < BLUETOOTH_SCREEN_LINE_COUNT; index++) {
-        bool status_line = index < BLUETOOTH_SCREEN_STATUS_LINES;
-        TextStyle style = {.font = theme->fonts.small,
-                           .color =
-                               status_line ? theme->colors.text_secondary : theme->colors.text};
-        Rect area = {content.x, FIRST_LINE_TOP + index * LINE_HEIGHT, content.width, LINE_HEIGHT};
-        label_draw(canvas, style, (Label){.area = area, .text = bluetooth->lines[index]});
-    }
+    BluetoothScreen *s = context;
+    Rect content = theme_content_area(s->theme);
+    canvas_fill_rect(canvas, content, s->theme->colors.background);
+    header_draw(canvas, s->theme, s->screen.title);
+    content.height -= 34;
+    list_view_draw(&s->list, canvas, content, s->now_ms);
+    TextStyle style = {.font = s->theme->fonts.small, .color = s->theme->colors.text_secondary};
+    const char *text = bluetooth_manager_status();
+    if (s->page == BLUETOOTH_PAIR && bluetooth_manager_count() == BLUETOOTH_SAVED_CAPACITY)
+        text = "Saved list full. Forget a device first.";
+    label_draw(canvas, style, (Label){.area = {content.x, content.y + content.height + 2, content.width, 15}, .text = text});
+    const HalBluetoothDevice *selected = (s->page == BLUETOOTH_DEVICE || s->page == BLUETOOTH_FORGET)
+        ? bluetooth_manager_device(s->device) : NULL;
+    const char *name = selected ? selected->name :
+        hal_bluetooth_status()->state == HAL_BLUETOOTH_CONNECTED ? hal_bluetooth_status()->connected.name : NULL;
+    if (name) label_draw(canvas, style, (Label){.area = {content.x, content.y + content.height + 17, content.width, 15}, .text = name});
 }
-
-Screen *bluetooth_screen_init(BluetoothScreen *bluetooth, const Theme *theme)
+Screen *bluetooth_screen_init(BluetoothScreen *s, const Theme *theme)
 {
-    *bluetooth = (BluetoothScreen){.theme = theme};
-    bluetooth->screen = (Screen){
-        .title = "Bluetooth",
-        .stays_on_wake = true,
-        .context = bluetooth,
-        .enter = enter,
-        .handle_key = handle_key,
-        .update = update,
-        .draw = draw,
-    };
-    return &bluetooth->screen;
-}
-
-const char *bluetooth_screen_line(const BluetoothScreen *bluetooth, int index)
-{
-    return bluetooth->lines[index];
+    *s = (BluetoothScreen){.theme = theme};
+    s->model = (ListModel){.context = s, .count = count, .label = label, .detail = detail, .opens = opens, .detail_max_width = 90};
+    s->screen = (Screen){.title = "Bluetooth", .stays_on_wake = true, .context = s,
+                        .enter = enter, .handle_key = handle_key, .update = update, .draw = draw};
+    show(s, BLUETOOTH_MAIN);
+    return &s->screen;
 }

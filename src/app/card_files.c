@@ -1,4 +1,5 @@
 #include "card_files.h"
+#include "bluetooth_manager.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -26,6 +27,8 @@ typedef struct CardFile {
 } CardFile;
 
 static const CardFile CARD_FILES[] = {
+    {BLUETOOTH_STORE_PATH, SMALL_FILE_BYTES},
+    {"/.echo/neo-bt.txt", SMALL_FILE_BYTES},
 #ifdef ECHO_BOARD_NEO
     {"/.echo/neo-audio.txt", SMALL_FILE_BYTES},
 #endif

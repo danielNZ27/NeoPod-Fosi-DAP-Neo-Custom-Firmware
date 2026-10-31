@@ -556,6 +556,9 @@ void dac_path_output_on(void)
 
 void dac_path_set_muted(bool mute)
 {
+#ifdef ECHO_BOARD_NEO
+    if (board_bluetooth_routed() && dac_up && !muted) return;
+#endif
     muted = mute;
     if (mute) {
         fade_to(DAC_VOLUME_MUTED);
@@ -581,6 +584,20 @@ void dac_path_set_gain(bool high)
     if (dac_up) {
         dac_set_gain(&BUS, high);
     }
+}
+
+void dac_path_set_bluetooth_route(bool on)
+{
+#ifdef ECHO_BOARD_NEO
+    /* Stock mod33 0308a1e4..0308a25c switches GPIO2.1 high for
+     * a powered, connected BT module and low for wired playback.
+     * Allow the complete DAC reset/probe sequence to finish first. */
+    if (dac_up) {
+        gpio_output(DAC_PINS[DAC_PIN_RESET], on);
+    }
+#else
+    (void)on;
+#endif
 }
 
 bool dac_path_take_underrun(void)

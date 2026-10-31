@@ -168,6 +168,7 @@ add_library(echo_device_logic STATIC
     opus_probe.c
     audio_engine.c
     audio_math.c
+    pcm_transition.c
     backlight.c
     battery_gauge.c
     boot_power.c

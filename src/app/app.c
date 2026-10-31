@@ -20,6 +20,7 @@
 #include "gfx/strip_renderer.h"
 #include "hal/audio.h"
 #include "hal/bluetooth.h"
+#include "bluetooth_manager.h"
 #include "hal/clock.h"
 #include "hal/display.h"
 #include "hal/input.h"
@@ -723,6 +724,7 @@ void app_start(void)
     app.now_ms = now_ms;
     CardFilesReport files = card_files_prepare();
     settings_store_load(&app.settings);
+    bluetooth_manager_init(now_ms);
     app_theme_select(app.settings.settings.theme, app.settings.settings.button_color);
     start_playback();
     start_hardware(now_ms);
@@ -839,6 +841,7 @@ void app_step(void)
     hal_audio_service();
     wheel_lock_update(&app.wheel_lock, now_ms);
     hal_bluetooth_service();
+    bluetooth_manager_update(now_ms);
     read_input();
     key_tracker_update(&app.keys, now_ms);
     if (fade_running()) {

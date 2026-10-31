@@ -1,6 +1,6 @@
 # NeoPod
 
-**NeoPod** is an open-source custom firmware for the **Fosi Audio DAP Neo** digital audio player. It brings a clean, retro iPod-style interface, smooth navigation, album artwork support, and bit-perfect playback powered by a dual-core audio architecture.
+**NeoPod** is an open-source custom firmware for the **Fosi Audio DAP Neo** digital audio player. It brings a clean, retro iPod-style interface, smooth navigation, album artwork support, Bluetooth audio with saved devices and automatic reconnect, and bit-perfect wired playback powered by a dual-core audio architecture.
 
 ## Screenshots
 
@@ -31,19 +31,34 @@ Huge credit and gratitude go to the original EchoPod developers for creating the
 
 ---
 
-## Latest release: v1.6.2
+## Latest release: v1.7.0
 
-[Download v1.6.2](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/tag/V1.6.2) · [Detailed changelog](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/blob/main/CHANGELOG.md)
+[Download v1.7.0](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/tag/V1.7.0) · [Release notes](release/RELEASE-v1.7.0.md) · [Detailed changelog](CHANGELOG.md)
 
-Adds a separate **iPod Classic** theme, full-screen boot artwork, smoother Cover Flow transitions, corrected header alignment, complete 12-row browser lists, and **Song name - Artist** labels in All Songs with scrolling for long selected entries.
+Adds **Bluetooth audio**, an explicit pairing menu, saved devices, automatic reconnect, and pop-free play/pause and track switching confirmed on the owner's Neo/headphone setup. Includes the existing iPod Classic theme, boot artwork, artwork scaling and playback features.
 
-Upgrading from previous versions: flash `DP3_V162.IMG` and merge the release's `sd-card/.echo` folder into your MicroSD card's `.echo` folder, including the matching `neo_scan.bin` and new `boot.rgb565`. Preserve existing settings, library, and cover files. No music rescan is required for these UI changes.
+**Upgrading from v1.6.2:** flash **DP3_V170.IMG** and replace **`.echo/neo_scan.bin`** on your MicroSD card. The decoder files and `boot.rgb565` are unchanged. Preserve existing settings, `bluetooth.bin`, library and artwork. Release downloads are individual files; no ZIP extraction is needed. For a first installation, download all matching [SD companion files](release/sd-card/.echo).
 
 Choose **Settings → Display & Controls → Theme → iPod Classic** for silver headers, white menus and blue highlights. Now Playing uses larger artwork and a dark background while preserving the Neo's playback, volume, shuffle/repeat and seek controls. Choose **NeoPod** to return to the original theme and your saved button colour.
 
 | iPod Classic menus | iPod Classic Now Playing | Boot artwork |
 | :---: | :---: | :---: |
 | ![iPod Classic home menu](assets/screenshots/ipod-home.png) | ![iPod Classic playback controls](assets/screenshots/ipod-now-playing.png) | ![NeoPod boot artwork](assets/boot.png) |
+
+### Bluetooth
+
+Open **Settings → Audio → Bluetooth**. Bluetooth defaults to **Off** on a fresh setup and remembers your chosen On/Off setting.
+
+- **Pair new device:** put your headphones in pairing mode, then click their name. Discovery alone never pairs a device. Background reconnect pauses while you browse this menu.
+- **Saved devices:** select **Connect**, **Disconnect**, or **Forget device**. Up to six devices are remembered. Forget asks for confirmation and removes the saved NeoPod entry.
+- While Bluetooth is On, previously saved devices reconnect automatically when available. Selecting Disconnect keeps that session disconnected until you choose Connect or toggle Bluetooth Off/On.
+- Audio starts automatically after connection; there is no extra Streaming button. PCM fades and a continuous silent feed avoid the reported play/pause/skip pop.
+
+[Bluetooth guide and limitations](docs/bluetooth.md)
+
+| Bluetooth settings | Pair a device | Saved-device controls |
+| :---: | :---: | :---: |
+| ![Bluetooth off by default](assets/screenshots/bluetooth-main.png) | ![Explicit headphone selection in the pairing menu](assets/screenshots/bluetooth-pair.png) | ![Disconnect and Forget device controls](assets/screenshots/bluetooth-device.png) |
 
 ## 🎵 Supported Audio Formats & Codecs
 
@@ -78,7 +93,7 @@ Follow these steps if your DAP Neo is currently running the factory stock firmwa
 
 ### 1. Download Release Files
 From the [`release/`](./release/) folder in this repository, obtain:
-- `DP3_V162.IMG` (The NeoPod firmware image)
+- `DP3_V170.IMG` (The NeoPod firmware image)
 - The `sd-card/.echo` folder (containing `neo_flac.bin`, `neo_mp3.bin`, `neo_aac.bin`, `neo_opus.bin`, `neo_scan.bin`, and `boot.rgb565`)
 
 ### 2. Copy Files to the DAP Neo
@@ -86,13 +101,13 @@ From the [`release/`](./release/) folder in this repository, obtain:
 2. Two drives will mount on your computer:
    - The **Internal Storage** drive
    - The **MicroSD Card** drive
-3. Copy **`DP3_V162.IMG`** directly to the **root** of the **Internal Storage** drive (`/`).
+3. Copy **`DP3_V170.IMG`** directly to the **root** of the **Internal Storage** drive (`/`).
 4. Copy the entire **`.echo`** folder directly to the **root** of your **MicroSD Card** (`/`).
    *(The `.echo` folder must be in the root directory so the path is `[SD Card]:\.echo\neo_*.bin`)*.
 
 ### 3. Apply the Firmware
 1. Safely eject and unplug the USB-C cable from the DAP Neo.
-2. The player's stock bootloader will detect `DP3_V162.IMG` and begin the flashing process.
+2. The player's stock bootloader will detect `DP3_V170.IMG` and begin the flashing process.
 3. Once completed, the player will automatically reboot directly into **NeoPod**! (May not auto reboot. In this instance use a paperclip or pinhead to press the button next to the USB C port. just press it once, don't need to hold, then can power DAP Neo on)
 
 ---
@@ -111,7 +126,7 @@ Updating to a newer version of NeoPod is fast and does **NOT** require reverting
 3. While continuing to hold those 3 buttons, plug the USB-C cable into your PC. Keep holding for 3–5 seconds, then release. The screen remains black in recovery mode.
 4. Run the flashing script:
    ```cmd
-   python flash-neo.py release/DP3_V162.IMG
+   python flash-neo.py release/DP3_V170.IMG
    ```
 5. The script flashes both firmware slots, verifies the Slot 1 header, requests a reset and checks whether the live recovery interface disconnects. If normal reset leaves it in recovery, it tries Rockchip's normal-boot/MSC reset mode. If restart cannot be confirmed, it tells you to use the pinhole reset; another flash is not needed.
 
@@ -156,7 +171,7 @@ To compile NeoPod and package the firmware image automatically:
 ```powershell
 ./build-neopod.ps1
 ```
-The compiled firmware image and companion binaries will be generated in `build/echopod-neo/`.
+The compiled firmware image and companion binaries will be packaged in `release/` and `release/sd-card/.echo/`. Intermediate build files are generated in `build/neo/`.
 
 ---
 

@@ -44,6 +44,7 @@ bool fake_hal_bluetooth_powered(void);
 int fake_hal_bluetooth_scan_count(void);
 int fake_hal_bluetooth_service_count(void);
 int fake_hal_bluetooth_connect_count(void);
+bool fake_hal_bluetooth_last_reconnect(void);
 int fake_hal_bluetooth_connect_index(void);
 int fake_hal_bluetooth_disconnect_count(void);
 void fake_hal_queue_transition(Key key, bool pressed, uint32_t time_ms);

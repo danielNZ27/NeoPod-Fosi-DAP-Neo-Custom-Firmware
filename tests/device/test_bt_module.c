@@ -407,14 +407,14 @@ static void cler_and_cher_report_a_failed_pairing(void)
     }
 }
 
-static void an_unanswered_connect_retries_once_with_ch06(void)
+static void an_unanswered_connect_retries_once_with_cl06(void)
 {
     BtModuleFrame frame;
     found_phones();
     bt_module_connect(&module, 0, CONNECT_MS, &frame);
     CHECK(!poll(CONNECT_MS + BT_MODULE_CONNECT_RETRY_MS - 1, &frame));
     CHECK(poll(CONNECT_MS + BT_MODULE_CONNECT_RETRY_MS, &frame));
-    CHECK(frame_is_connect(&frame, "CH06", PHONES));
+    CHECK(frame_is_connect(&frame, "CL06", PHONES));
     CHECK(!poll(CONNECT_MS + 2 * BT_MODULE_CONNECT_RETRY_MS, &frame));
 }
 
@@ -536,25 +536,22 @@ static bool frame_bytes_are(const BtModuleFrame *frame, const uint8_t *bytes, ui
     return frame->length == length && memcmp(frame->bytes, bytes, length) == 0;
 }
 
-static void starting_the_stream_sends_cy0_1e_then_the_play_notice(void)
+static void starting_the_stream_sends_only_cy0_1e(void)
 {
     static const uint8_t STREAM_ON[] = {'C', 'Y', '0', 0x1E, 0x00};
-    static const uint8_t PLAY_NOTICE[] = {'C', 0x86, '0', '0', 0x00};
     BtModuleFrame frame;
     connected_for(START_MS + 400);
     CHECK(bt_module_set_stream(&module, true, START_MS + 500, &frame));
     CHECK(frame_bytes_are(&frame, STREAM_ON, sizeof STREAM_ON));
     CHECK(module.status.streaming);
     CHECK(!poll(START_MS + 500 + BT_MODULE_PLAY_NOTICE_DELAY_MS - 1, &frame));
-    CHECK(poll(START_MS + 500 + BT_MODULE_PLAY_NOTICE_DELAY_MS, &frame));
-    CHECK(frame_bytes_are(&frame, PLAY_NOTICE, sizeof PLAY_NOTICE));
+    CHECK(!poll(START_MS + 500 + BT_MODULE_PLAY_NOTICE_DELAY_MS, &frame));
     CHECK(!poll(START_MS + 500 + 2 * BT_MODULE_PLAY_NOTICE_DELAY_MS, &frame));
 }
 
-static void stopping_the_stream_sends_cy0_00_then_the_pause_notice(void)
+static void stopping_the_stream_sends_only_cy0_00(void)
 {
     static const uint8_t STREAM_OFF[] = {'C', 'Y', '0', 0x00, 0x00};
-    static const uint8_t PAUSE_NOTICE[] = {'C', 0x87, '0', '0', 0x00};
     BtModuleFrame frame;
     connected_for(START_MS + 400);
     bt_module_set_stream(&module, true, START_MS + 500, &frame);
@@ -562,8 +559,7 @@ static void stopping_the_stream_sends_cy0_00_then_the_pause_notice(void)
     CHECK(bt_module_set_stream(&module, false, START_MS + 800, &frame));
     CHECK(frame_bytes_are(&frame, STREAM_OFF, sizeof STREAM_OFF));
     CHECK(!module.status.streaming);
-    CHECK(poll(START_MS + 800 + BT_MODULE_PLAY_NOTICE_DELAY_MS, &frame));
-    CHECK(frame_bytes_are(&frame, PAUSE_NOTICE, sizeof PAUSE_NOTICE));
+    CHECK(!poll(START_MS + 800 + BT_MODULE_PLAY_NOTICE_DELAY_MS, &frame));
 }
 
 static void streaming_needs_a_connection(void)
@@ -585,10 +581,73 @@ static void a_dropped_link_ends_the_stream(void)
     CHECK(!module.status.streaming);
 }
 
+static void a_saved_device_reconnects_without_a_scan(void)
+{
+    power_on_ready();
+    BtModuleFrame frame;
+    HalBluetoothDevice saved = {{1, 2, 3, 4, 5, 6}, "Saved headphones"};
+    const uint8_t expected[] = {'C', 'H', '0', '6', 1, 2, 3, 4, 5, 6};
+    CHECK(bt_module_connect_device(&module, &saved, true, START_MS + 500, &frame));
+    CHECK(frame_bytes_are(&frame, expected, sizeof expected));
+    CHECK_EQUAL(0, module.status.device_count);
+    CHECK(poll(START_MS + 500 + BT_MODULE_CONNECT_RETRY_MS, &frame));
+    CHECK(frame_bytes_are(&frame, expected, sizeof expected));
+    receive_text("CHOK", START_MS + 600);
+    settle(START_MS + 600);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTED, module.status.state);
+    CHECK(strcmp(saved.name, module.status.connected.name) == 0);
+}
+
+static void leaving_discovery_stops_it_with_cp00(void)
+{
+    power_on_ready();
+    BtModuleFrame frame;
+    CHECK(bt_module_scan(&module, START_MS + 500, &frame));
+    CHECK(bt_module_stop_scan(&module, START_MS + 600, &frame));
+    CHECK(frame_is(&frame, "CP00"));
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, module.status.state);
+    CHECK(!bt_module_stop_scan(&module, START_MS + 700, &frame));
+}
+
+static void lowercase_connected_status_keeps_the_stream(void)
+{
+    BtModuleFrame frame;
+    connected_for(START_MS + 400);
+    bt_module_set_stream(&module, true, START_MS + 500, &frame);
+    const uint8_t header[] = {'C', 'Q', 'o', '1', '6'};
+    receive_bytes(header, sizeof header, START_MS + 600);
+    receive_bytes(PHONES, sizeof PHONES, START_MS + 600);
+    receive_text("WH-1000XM5", START_MS + 600);
+    settle(START_MS + 600);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTED, module.status.state);
+    CHECK(module.status.streaming);
+    CHECK(strcmp("WH-1000XM5", module.status.connected.name) == 0);
+    CHECK(memcmp(PHONES, module.status.connected.address, 6) == 0);
+}
+
+static void incomplete_and_unknown_status_do_not_drop_a_live_link(void)
+{
+    connected_for(START_MS + 400);
+    receive_text("CQ?", START_MS + 500);
+    settle(START_MS + 500);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTED, module.status.state);
+    receive_text("CQO00", START_MS + 600);
+    settle(START_MS + 600);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTED, module.status.state);
+    CHECK(memcmp(PHONES, module.status.connected.address, 6) == 0);
+    receive_text("CQI", START_MS + 700);
+    settle(START_MS + 700);
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, module.status.state);
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
         TEST_CASE(a_powered_module_waits_for_its_ready_report),
+        TEST_CASE(lowercase_connected_status_keeps_the_stream),
+        TEST_CASE(incomplete_and_unknown_status_do_not_drop_a_live_link),
+        TEST_CASE(a_saved_device_reconnects_without_a_scan),
+        TEST_CASE(leaving_discovery_stops_it_with_cp00),
         TEST_CASE(a_frame_split_across_reads_waits_for_the_rest),
         TEST_CASE(a_cut_off_frame_is_dropped_after_a_pause),
         TEST_CASE(a_long_burst_is_read_in_full),
@@ -617,7 +676,7 @@ int main(void)
         TEST_CASE(connecting_works_while_still_scanning),
         TEST_CASE(clok_reports_paired),
         TEST_CASE(cler_and_cher_report_a_failed_pairing),
-        TEST_CASE(an_unanswered_connect_retries_once_with_ch06),
+        TEST_CASE(an_unanswered_connect_retries_once_with_cl06),
         TEST_CASE(a_connect_without_a_result_is_cancelled_after_thirty_seconds),
         TEST_CASE(cqo_reports_the_connected_device),
         TEST_CASE(a_long_connected_name_is_cut),
@@ -627,8 +686,8 @@ int main(void)
         TEST_CASE(disconnecting_sends_ct00_and_ctok_confirms_it),
         TEST_CASE(disconnecting_needs_a_link),
         TEST_CASE(a_disconnect_cancels_a_pending_connect),
-        TEST_CASE(starting_the_stream_sends_cy0_1e_then_the_play_notice),
-        TEST_CASE(stopping_the_stream_sends_cy0_00_then_the_pause_notice),
+        TEST_CASE(starting_the_stream_sends_only_cy0_1e),
+        TEST_CASE(stopping_the_stream_sends_only_cy0_00),
         TEST_CASE(streaming_needs_a_connection),
         TEST_CASE(a_dropped_link_ends_the_stream),
     };

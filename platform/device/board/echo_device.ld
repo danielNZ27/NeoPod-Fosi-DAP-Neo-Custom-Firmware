@@ -4,7 +4,7 @@ MEMORY
 {
     DATA_RAM (rw) : ORIGIN = 0x03004000, LENGTH = 0x48000
     /* Still below the stock Module 0 capacity (0x29C14) and HIGH_RAM. */
-    CODE_RAM (rx) : ORIGIN = 0x03050000, LENGTH = 0x27000
+    CODE_RAM (rx) : ORIGIN = 0x03050000, LENGTH = 0x29C14
     HIGH_RAM (rw) : ORIGIN = 0x0307A000, LENGTH = 0x25000
 }
 

@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "app_screens.h"
+#include "bluetooth_manager.h"
 #include "default_theme.h"
 #include "fake_hal.h"
 #include "fixture_library.h"
@@ -154,6 +155,41 @@ int main(int argc, char **argv)
     playing->screen.draw(playing, &canvas);
     status(&canvas);
     if (!save(argv[1], "ipod-now-playing")) return 1;
+    app_theme_select(0, 0);
+    bluetooth_manager_init(1000);
+    BluetoothScreen *bt = &screens.settings.bluetooth;
+    bt->screen.enter(bt, 1000);
+    canvas_clear(&canvas, APP_THEME.colors.background);
+    bt->screen.draw(bt, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "bluetooth-off")) return 1;
+    bt->screen.handle_key(bt, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, 1100);
+    bt->screen.handle_key(bt, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 1200);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
+    bt->screen.update(bt, 1500);
+    fake_hal_bluetooth()->devices[0] = (HalBluetoothDevice){{1,2,3,4,5,6}, "WH-1000XM5"};
+    fake_hal_bluetooth()->devices[1] = (HalBluetoothDevice){{7,8,9,10,11,12}, "Living Room Speaker"};
+    fake_hal_bluetooth()->device_count = 2;
+    list_view_select(&bt->list, 2, 1600);
+    canvas_clear(&canvas, APP_THEME.colors.background);
+    bt->screen.draw(bt, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "bluetooth-pair")) return 1;
+    bt->screen.handle_key(bt, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 1700);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    bluetooth_manager_update(1800);
+    bt->screen.handle_key(bt, (KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, 1900);
+    list_view_select(&bt->list, 2, 2000);
+    bt->screen.handle_key(bt, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 2100);
+    canvas_clear(&canvas, APP_THEME.colors.background);
+    bt->screen.draw(bt, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "bluetooth-saved")) return 1;
+    bt->screen.handle_key(bt, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 2200);
+    canvas_clear(&canvas, APP_THEME.colors.background);
+    bt->screen.draw(bt, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "bluetooth-device")) return 1;
     puts("Rendered all UI screens in multiple color themes successfully.");
     return 0;
 }

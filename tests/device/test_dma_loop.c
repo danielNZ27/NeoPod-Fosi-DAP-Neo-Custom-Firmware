@@ -43,6 +43,21 @@ static void blocks_larger_than_the_controller_allows_are_refused(void)
     CHECK(!dma_ring_items(items, 0, 0x03010000u, 4000, 0x03020000u));
 }
 
+static void resume_starts_at_the_paused_stereo_frame_then_rejoins_the_ring(void)
+{
+    DmaItem item;
+    CHECK(dma_ring_resume_item(&item, 7, 0x03010000u, 4000, 0x03030000u, 5122));
+    CHECK_EQUAL(0x03010000u + 5122u * 4, item.source);
+    CHECK_EQUAL(2878u, item.control_high);
+    CHECK_EQUAL(0x03030000u + 2u * sizeof(DmaItem), item.next);
+    CHECK_EQUAL(0x40030024u, item.destination);
+    CHECK(dma_ring_resume_item(&item, 7, 0x03010000u, 4000, 0x03030000u, 27998));
+    CHECK_EQUAL(2u, item.control_high);
+    CHECK_EQUAL(0x03030000u, item.next);
+    CHECK(!dma_ring_resume_item(&item, 7, 0x03010000u, 4000, 0x03030000u, 28000));
+    CHECK(!dma_ring_resume_item(&item, 7, 0x03010000u, 4000, 0x03030000u, 1));
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
@@ -50,6 +65,7 @@ int main(void)
         TEST_CASE(the_position_counts_words_from_the_buffer_start),
         TEST_CASE(a_ring_chains_its_blocks_in_a_loop),
         TEST_CASE(blocks_larger_than_the_controller_allows_are_refused),
+        TEST_CASE(resume_starts_at_the_paused_stereo_frame_then_rejoins_the_ring),
     };
     return test_run_all(cases, TEST_CASE_COUNT(cases));
 }

@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.7.0 — 2026-10-31
+
+Firmware image: `DP3_V170.IMG`. [Release notes and upgrade instructions](release/RELEASE-v1.7.0.md).
+
+- Added working Bluetooth audio for the Neo, with Settings → Audio → Bluetooth, an On/Off toggle, explicit device discovery/pairing and up to six saved devices. Bluetooth defaults to Off and remembers the chosen setting.
+- Added saved-device Connect, Disconnect and confirmed Forget actions. Automatic reconnect uses saved addresses only, pauses in Pair new device and never falls back to the new-pair command. Device discovery and matching names do not authorize pairing.
+- Start audio automatically after an approved connection settles; preserve the connection when leaving the menu. Persist the device list and preferred device in a checksummed `.echo/bluetooth.bin` file.
+- Follow the Neo's stock GPIO2.1 audio route while preserving its DAC-enable and OK-button pins. Handle stock uppercase/lowercase connected reports and explicit disconnect statuses.
+- Fixed the reported Bluetooth play/pause/skip pop: PCM fade-out holds a silent tail, a dedicated DMA loop feeds zeros during pauses and same-rate track loading, and resume rejoins the music ring at the paused stereo frame with a fade-in. Keep the external DAC's mute/volume state steady during these transitions and settle initial DAC setup before module unmute.
+- Added a saved UART diagnostic trace at `.echo/neo-bt.txt` after a disconnect/off and regression tests for explicit pairing, reconnect policy, status handling, PCM transitions and DMA resume.
+- The owner confirmed the exact V170 image plays correctly and resolves the reported popping on the physical Neo/headphone setup. Other headphones and sample-rate transitions are not comprehensively tested.
+
+**Upgrade from v1.6.2:** flash `DP3_V170.IMG` and replace `.echo/neo_scan.bin`. Other decoder and boot files are unchanged. Preserve settings, saved devices, library and artwork. Downloads are individual files.
+
 ## v1.6.2 — 2026-10-31
 
 Firmware image: `DP3_V162.IMG`. See [release notes](release/RELEASE-v1.6.2.md) for details and upgrade instructions.

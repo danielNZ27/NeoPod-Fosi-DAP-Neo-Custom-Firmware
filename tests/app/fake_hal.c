@@ -116,6 +116,7 @@ typedef struct FakeHal {
     int bluetooth_scan_count;
     int bluetooth_service_count;
     int bluetooth_connect_count;
+    bool bluetooth_last_reconnect;
     int bluetooth_connect_index;
     int bluetooth_disconnect_count;
     HalUsbMode usb_mode;
@@ -796,9 +797,28 @@ void hal_bluetooth_connect(uint8_t index)
     fake.bluetooth_connect_index = index;
 }
 
+void hal_bluetooth_stop_scan(void)
+{
+    if (fake.bluetooth.state == HAL_BLUETOOTH_SCANNING) fake.bluetooth.state = HAL_BLUETOOTH_READY;
+}
+
+void hal_bluetooth_save_trace(void) {}
+
+void hal_bluetooth_connect_device(const HalBluetoothDevice *device, bool reconnect)
+{
+    fake.bluetooth_last_reconnect = reconnect;
+    fake.bluetooth_connect_count++;
+    fake.bluetooth.connected = *device;
+    fake.bluetooth.state = HAL_BLUETOOTH_CONNECTING;
+}
+
+bool fake_hal_bluetooth_last_reconnect(void) { return fake.bluetooth_last_reconnect; }
+
 void hal_bluetooth_disconnect(void)
 {
     fake.bluetooth_disconnect_count++;
+    fake.bluetooth.state = HAL_BLUETOOTH_READY;
+    fake.bluetooth.streaming = false;
 }
 
 void hal_bluetooth_set_stream(bool on)

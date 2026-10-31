@@ -8,3 +8,5 @@ __pycache__/
 log/
 
 release/RKNANOFW.IMG
+
+build-cleanup-backup-*/

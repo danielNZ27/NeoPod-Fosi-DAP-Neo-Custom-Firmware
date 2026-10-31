@@ -33,6 +33,7 @@ typedef struct BtModule {
     HalBluetoothDevice target;
     bool answered;
     bool repeated;
+    bool reconnecting;
     uint8_t play_notice;
     uint32_t stream_changed_ms;
 } BtModule;
@@ -41,7 +42,10 @@ void bt_module_power_on(BtModule *module, uint32_t now_ms);
 void bt_module_power_off(BtModule *module);
 void bt_module_receive(BtModule *module, uint8_t byte, uint32_t now_ms);
 bool bt_module_scan(BtModule *module, uint32_t now_ms, BtModuleFrame *frame);
+bool bt_module_stop_scan(BtModule *module, uint32_t now_ms, BtModuleFrame *frame);
 bool bt_module_connect(BtModule *module, uint8_t index, uint32_t now_ms, BtModuleFrame *frame);
+bool bt_module_connect_device(BtModule *module, const HalBluetoothDevice *device,
+                              bool reconnect, uint32_t now_ms, BtModuleFrame *frame);
 bool bt_module_disconnect(BtModule *module, uint32_t now_ms, BtModuleFrame *frame);
 bool bt_module_set_stream(BtModule *module, bool on, uint32_t now_ms, BtModuleFrame *frame);
 bool bt_module_poll(BtModule *module, uint32_t now_ms, BtModuleFrame *frame);

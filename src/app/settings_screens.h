@@ -5,6 +5,7 @@
 #include "core/power_policy.h"
 #include "player.h"
 #include "screens/equalizer_screen.h"
+#include "screens/bluetooth_screen.h"
 #include "settings_store.h"
 #include "ui/choice_screen.h"
 #include "ui/menu_screen.h"
@@ -15,7 +16,7 @@ enum {
     SETTINGS_CHOICE_COUNT = 14,
     SETTINGS_CATEGORY_COUNT = 5,
     SETTINGS_PLAYBACK_COUNT = 3,
-    SETTINGS_AUDIO_COUNT = 3,
+    SETTINGS_AUDIO_COUNT = 4,
     SETTINGS_DISPLAY_COUNT = 6,
     SETTINGS_POWER_COUNT = 2,
     SETTINGS_SYSTEM_COUNT = 2,
@@ -58,6 +59,7 @@ struct SettingsScreens {
     MenuScreen system_menu;
     ChoiceScreen choice;
     EqualizerScreen equalizer;
+    BluetoothScreen bluetooth;
     SettingsEntry entries[SETTINGS_CHOICE_COUNT];
     MenuItem items[SETTINGS_CATEGORY_COUNT];
     MenuItem playback_items[SETTINGS_PLAYBACK_COUNT];

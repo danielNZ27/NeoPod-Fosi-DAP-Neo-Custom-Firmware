@@ -1,265 +1,309 @@
 #include <string.h>
-
 #include "check.h"
+#include "bluetooth_manager.h"
 #include "default_theme.h"
 #include "fake_hal.h"
 #include "screens/bluetooth_screen.h"
 
-enum {
-    START_MS = 1000
-};
-
-static BluetoothScreen bluetooth;
-
-static Screen *open_bluetooth(void)
+static BluetoothScreen ui;
+static const HalBluetoothDevice phones = {{1,2,3,4,5,6}, "WH-1000XM5"};
+static void reset(void)
 {
     fake_hal_reset();
-    Screen *screen = bluetooth_screen_init(&bluetooth, &DEFAULT_THEME);
-    screen->enter(screen->context, START_MS);
-    return screen;
+    bluetooth_manager_init(1000);
+    bluetooth_screen_init(&ui, &DEFAULT_THEME);
+    ui.screen.enter(&ui, 1000);
 }
-
-static KeyEvent tap(Key key)
+static void press(Key key)
 {
-    return (KeyEvent){.key = key, .gesture = KEY_GESTURE_PRESS};
+    ui.screen.handle_key(&ui, (KeyEvent){key, KEY_GESTURE_PRESS}, 1100);
 }
-
-static KeyEvent hold(Key key)
+static void pair(void)
 {
-    return (KeyEvent){.key = key, .gesture = KEY_GESTURE_LONG_PRESS};
+    bluetooth_manager_set_enabled(true, 1000);
+    HalBluetoothStatus *s = fake_hal_bluetooth();
+    s->state = HAL_BLUETOOTH_READY;
+    s->devices[0] = phones;
+    s->device_count = 1;
+    bluetooth_manager_pairing(true);
+    bluetooth_manager_pair(0, 1500);
+    s->state = HAL_BLUETOOTH_CONNECTED;
+    s->connected = phones;
+    bluetooth_manager_update(2000);
+    CHECK(!s->streaming);
+    bluetooth_manager_update(3000);
+    bluetooth_manager_pairing(false);
 }
-
-static bool line_is(int index, const char *text)
+static void off_by_default_and_opening_does_not_enable(void)
 {
-    return strcmp(text, bluetooth_screen_line(&bluetooth, index)) == 0;
-}
-
-static void entering_powers_the_module_on(void)
-{
-    Screen *screen = open_bluetooth();
-    screen->update(screen->context, START_MS);
-    CHECK(fake_hal_bluetooth_powered());
-    CHECK(line_is(0, "Starting"));
-}
-
-static void a_ready_module_starts_one_scan(void)
-{
-    Screen *screen = open_bluetooth();
-    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
-    screen->update(screen->context, START_MS + 100);
-    CHECK_EQUAL(1, fake_hal_bluetooth_scan_count());
-    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
-    screen->update(screen->context, START_MS + 200);
-    CHECK_EQUAL(1, fake_hal_bluetooth_scan_count());
-}
-
-static void play_scans_again(void)
-{
-    Screen *screen = open_bluetooth();
-    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
-    screen->update(screen->context, START_MS + 100);
-    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
-    screen->handle_key(screen->context, tap(KEY_PLAY), START_MS + 200);
-    CHECK_EQUAL(2, fake_hal_bluetooth_scan_count());
-}
-
-static void back_powers_the_module_off_and_leaves(void)
-{
-    Screen *screen = open_bluetooth();
-    ScreenAction action = screen->handle_key(screen->context, tap(KEY_BACK), START_MS + 100);
-    CHECK_EQUAL(SCREEN_ACTION_POP, action.type);
+    reset();
+    CHECK(!bluetooth_manager_enabled());
     CHECK(!fake_hal_bluetooth_powered());
+    CHECK(strcmp("Off", ui.model.detail(&ui, 0)) == 0);
+    CHECK_EQUAL(BLUETOOTH_MAIN, ui.page);
 }
-
-static void the_state_line_shows_the_version_and_link_status(void)
+static void pairing_menu_waits_for_ready_then_searches(void)
 {
-    Screen *screen = open_bluetooth();
-    HalBluetoothStatus *status = fake_hal_bluetooth();
-    status->state = HAL_BLUETOOTH_SCANNING;
-    status->version = '5';
-    status->link_status = 'I';
-    screen->update(screen->context, START_MS + 100);
-    CHECK(line_is(0, "Scanning · v5 · status I"));
-}
-
-static void no_reply_is_reported(void)
-{
-    Screen *screen = open_bluetooth();
-    fake_hal_bluetooth()->state = HAL_BLUETOOTH_NO_REPLY;
-    screen->update(screen->context, START_MS + 100);
-    CHECK(line_is(0, "No reply"));
-}
-
-static void the_link_line_counts_bytes_frames_and_overruns(void)
-{
-    Screen *screen = open_bluetooth();
-    HalBluetoothLink *link = &fake_hal_bluetooth()->link;
-    link->received = 123;
-    link->frames = 9;
-    link->overruns = 2;
-    link->fifo_peak = 7;
-    link->fifo_depth = 16;
-    screen->update(screen->context, START_MS + 100);
-    CHECK(line_is(1, "RX 123 · 9 frames · OE 2 · FIFO 7/16"));
-}
-
-static void the_last_bytes_show_in_hex(void)
-{
-    Screen *screen = open_bluetooth();
-    HalBluetoothLink *link = &fake_hal_bluetooth()->link;
-    link->recent[0] = 0x43;
-    link->recent[1] = 0x56;
-    link->recent[2] = 0x0A;
-    link->recent_length = 3;
-    screen->update(screen->context, START_MS + 100);
-    CHECK(line_is(2, "43 56 0A"));
-}
-
-static void nothing_received_says_so(void)
-{
-    Screen *screen = open_bluetooth();
-    screen->update(screen->context, START_MS + 100);
-    CHECK(line_is(2, "Nothing received"));
-}
-
-static void found_devices_are_listed(void)
-{
-    Screen *screen = open_bluetooth();
-    HalBluetoothStatus *status = fake_hal_bluetooth();
-    status->device_count = 2;
-    strcpy(status->devices[0].name, "WH-1000XM4");
-    strcpy(status->devices[1].name, "Kitchen");
-    screen->update(screen->context, START_MS + 100);
-    CHECK(line_is(3, "› 1. WH-1000XM4"));
-    CHECK(line_is(4, "2. Kitchen"));
-    CHECK(line_is(5, ""));
-}
-
-static Screen *open_with_two_devices(void)
-{
-    Screen *screen = open_bluetooth();
-    HalBluetoothStatus *status = fake_hal_bluetooth();
-    status->state = HAL_BLUETOOTH_READY;
-    status->device_count = 2;
-    strcpy(status->devices[0].name, "WH-1000XM4");
-    status->devices[0].address[0] = 0x11;
-    strcpy(status->devices[1].name, "Kitchen");
-    status->devices[1].address[0] = 0x22;
-    screen->update(screen->context, START_MS + 100);
-    return screen;
-}
-
-static void volume_keys_move_the_selection_and_wrap(void)
-{
-    Screen *screen = open_with_two_devices();
-    screen->handle_key(screen->context, tap(KEY_VOLUME_UP), START_MS + 200);
-    screen->update(screen->context, START_MS + 200);
-    CHECK(line_is(4, "› 2. Kitchen"));
-    screen->handle_key(screen->context, tap(KEY_VOLUME_UP), START_MS + 300);
-    screen->update(screen->context, START_MS + 300);
-    CHECK(line_is(3, "› 1. WH-1000XM4"));
-    screen->handle_key(screen->context, tap(KEY_VOLUME_DOWN), START_MS + 400);
-    screen->update(screen->context, START_MS + 400);
-    CHECK(line_is(4, "› 2. Kitchen"));
-}
-
-static void play_pairs_the_selected_device(void)
-{
-    Screen *screen = open_with_two_devices();
-    screen->handle_key(screen->context, tap(KEY_VOLUME_UP), START_MS + 200);
-    screen->handle_key(screen->context, tap(KEY_PLAY), START_MS + 300);
-    CHECK_EQUAL(1, fake_hal_bluetooth_connect_count());
-    CHECK_EQUAL(1, fake_hal_bluetooth_connect_index());
+    reset(); press(KEY_WHEEL_DOWN); press(KEY_PLAY);
+    CHECK_EQUAL(BLUETOOTH_PAIR, ui.page);
+    ui.screen.update(&ui, 1200);
+    CHECK_EQUAL(0, fake_hal_bluetooth_scan_count());
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
+    ui.screen.update(&ui, 1500);
+    ui.screen.update(&ui, 1600);
     CHECK_EQUAL(1, fake_hal_bluetooth_scan_count());
+    press(KEY_BACK);
+    CHECK_EQUAL(BLUETOOTH_MAIN, ui.page);
+    CHECK(fake_hal_bluetooth_powered());
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, fake_hal_bluetooth()->state);
 }
-
-static void holding_play_scans_again(void)
+static void connection_is_saved_and_audio_starts_automatically(void)
 {
-    Screen *screen = open_with_two_devices();
-    screen->handle_key(screen->context, hold(KEY_PLAY), START_MS + 300);
-    CHECK_EQUAL(2, fake_hal_bluetooth_scan_count());
-    CHECK_EQUAL(0, fake_hal_bluetooth_connect_count());
-}
-
-static void holding_play_while_connected_disconnects(void)
-{
-    Screen *screen = open_with_two_devices();
-    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
-    screen->handle_key(screen->context, hold(KEY_PLAY), START_MS + 300);
-    CHECK_EQUAL(1, fake_hal_bluetooth_disconnect_count());
-    CHECK_EQUAL(1, fake_hal_bluetooth_scan_count());
-}
-
-static void the_state_line_shows_the_pairing_result(void)
-{
-    Screen *screen = open_with_two_devices();
-    HalBluetoothStatus *status = fake_hal_bluetooth();
-    status->state = HAL_BLUETOOTH_READY;
-    status->version = '5';
-    status->pairing = HAL_BLUETOOTH_PAIRING_FAILED;
-    screen->update(screen->context, START_MS + 200);
-    CHECK(line_is(0, "Ready · v5 · Pairing failed"));
-    status->state = HAL_BLUETOOTH_CONNECTING;
-    status->pairing = HAL_BLUETOOTH_PAIRED;
-    screen->update(screen->context, START_MS + 300);
-    CHECK(line_is(0, "Connecting · v5 · Paired"));
-}
-
-static void the_connected_device_is_ticked(void)
-{
-    Screen *screen = open_with_two_devices();
-    HalBluetoothStatus *status = fake_hal_bluetooth();
-    status->state = HAL_BLUETOOTH_CONNECTED;
-    status->connected = status->devices[1];
-    screen->update(screen->context, START_MS + 200);
-    CHECK(line_is(0, "Connected · Kitchen"));
-    CHECK(line_is(4, "2. Kitchen ✓"));
-    CHECK(line_is(3, "› 1. WH-1000XM4"));
-}
-
-static void play_while_connected_toggles_the_stream(void)
-{
-    Screen *screen = open_with_two_devices();
-    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
-    screen->handle_key(screen->context, tap(KEY_PLAY), START_MS + 300);
-    CHECK_EQUAL(0, fake_hal_bluetooth_connect_count());
+    reset(); pair();
+    CHECK_EQUAL(1, bluetooth_manager_count());
+    CHECK(strcmp(phones.name, bluetooth_manager_device(0)->name) == 0);
     CHECK(fake_hal_bluetooth()->streaming);
-    screen->handle_key(screen->context, tap(KEY_PLAY), START_MS + 400);
-    CHECK(!fake_hal_bluetooth()->streaming);
+    ui.screen.handle_key(&ui, (KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, 2100);
+    CHECK(fake_hal_bluetooth_powered());
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTED, fake_hal_bluetooth()->state);
+}
+static void saved_device_reconnects_without_discovery_after_reload(void)
+{
+    reset(); pair();
+    bluetooth_manager_init(3000);
+    CHECK(bluetooth_manager_enabled());
+    CHECK_EQUAL(1, bluetooth_manager_count());
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
+    bluetooth_manager_update(3300);
+    bluetooth_manager_update(5400);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, fake_hal_bluetooth()->state);
+    CHECK(memcmp(phones.address, fake_hal_bluetooth()->connected.address, 6) == 0);
+    CHECK_EQUAL(0, fake_hal_bluetooth_scan_count());
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    bluetooth_manager_update(6000);
+    bluetooth_manager_update(7000);
+    CHECK(fake_hal_bluetooth()->streaming);
+    CHECK_EQUAL(1, bluetooth_manager_count());
+}
+static void powered_off_headphones_are_retried_and_can_return(void)
+{
+    reset(); pair();
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
+    bluetooth_manager_update(3000);
+    bluetooth_manager_update(5100);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, fake_hal_bluetooth()->state);
+    bluetooth_manager_update(13200);
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, fake_hal_bluetooth()->state);
+    bluetooth_manager_update(15300);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, fake_hal_bluetooth()->state);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    bluetooth_manager_update(16000);
+    bluetooth_manager_update(17000);
+    CHECK(fake_hal_bluetooth()->streaming);
+}
+static void manual_disconnect_stays_disconnected_until_requested(void)
+{
+    reset(); pair(); bluetooth_manager_disconnect();
+    int attempts = fake_hal_bluetooth_connect_count();
+    bluetooth_manager_update(3000); bluetooth_manager_update(30000);
+    CHECK_EQUAL(attempts, fake_hal_bluetooth_connect_count());
+    bluetooth_manager_connect(0, 31000);
+    CHECK_EQUAL(attempts + 1, fake_hal_bluetooth_connect_count());
+}
+static void off_is_saved_and_preserves_devices(void)
+{
+    reset(); pair(); bluetooth_manager_set_enabled(false, 3000);
+    bluetooth_manager_init(4000);
+    CHECK(!bluetooth_manager_enabled());
+    CHECK(!fake_hal_bluetooth_powered());
+    CHECK_EQUAL(1, bluetooth_manager_count());
+    bluetooth_manager_update(30000);
+    CHECK_EQUAL(HAL_BLUETOOTH_OFF, fake_hal_bluetooth()->state);
+}
+static void forget_requires_confirmation_and_prevents_reconnection(void)
+{
+    reset(); pair();
+    list_view_select(&ui.list, 2, 2000); press(KEY_PLAY); press(KEY_PLAY);
+    CHECK_EQUAL(BLUETOOTH_DEVICE, ui.page);
+    press(KEY_WHEEL_DOWN); press(KEY_PLAY);
+    CHECK_EQUAL(BLUETOOTH_FORGET, ui.page);
+    CHECK_EQUAL(1, bluetooth_manager_count());
+    press(KEY_PLAY); /* Cancel is initially selected. */
+    CHECK_EQUAL(1, bluetooth_manager_count());
+    press(KEY_WHEEL_DOWN); press(KEY_PLAY); press(KEY_WHEEL_DOWN); press(KEY_PLAY);
+    CHECK_EQUAL(0, bluetooth_manager_count());
+    CHECK_EQUAL(BLUETOOTH_SAVED, ui.page);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    fake_hal_bluetooth()->connected = phones;
+    bluetooth_manager_update(4000);
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, fake_hal_bluetooth()->state);
+    bluetooth_manager_init(5000);
+    CHECK_EQUAL(0, bluetooth_manager_count());
+}
+static void corrupted_storage_defaults_to_off(void)
+{
+    reset();
+    uint8_t corrupt[240] = {'N','B','T','1',1,255};
+    fake_hal_add_file(BLUETOOTH_STORE_PATH, corrupt, sizeof corrupt);
+    bluetooth_manager_init(1000);
+    CHECK(!bluetooth_manager_enabled());
+    CHECK_EQUAL(0, bluetooth_manager_count());
+}
+static void selecting_saved_device_can_turn_bluetooth_on(void)
+{
+    reset(); pair(); bluetooth_manager_set_enabled(false, 3000);
+    bluetooth_manager_connect(0, 4000);
+    CHECK(bluetooth_manager_enabled());
+    CHECK_EQUAL(HAL_BLUETOOTH_STARTING, fake_hal_bluetooth()->state);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
+    bluetooth_manager_update(4300);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, fake_hal_bluetooth()->state);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    bluetooth_manager_update(5000);
+    bluetooth_manager_update(6000);
+    CHECK(fake_hal_bluetooth()->streaming);
 }
 
-static void the_state_line_shows_the_stream(void)
+static void reconnect_prefers_last_device_then_tries_other_saved_devices(void)
 {
-    Screen *screen = open_with_two_devices();
+    reset(); pair(); bluetooth_manager_disconnect();
+    HalBluetoothDevice speaker = {{7,8,9,10,11,12}, "Speaker"};
+    fake_hal_bluetooth()->devices[1] = speaker;
+    fake_hal_bluetooth()->device_count = 2;
+    bluetooth_manager_pairing(true);
+    bluetooth_manager_pair(1, 3000);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    bluetooth_manager_update(4000);
+    bluetooth_manager_pairing(false);
+    CHECK_EQUAL(2, bluetooth_manager_count());
+    CHECK(strcmp(phones.name, bluetooth_manager_device(0)->name) == 0);
+    CHECK(strcmp(speaker.name, bluetooth_manager_device(1)->name) == 0);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
+    bluetooth_manager_update(5000); bluetooth_manager_update(7100);
+    CHECK(strcmp(speaker.name, fake_hal_bluetooth()->connected.name) == 0);
+    bluetooth_manager_update(15200); bluetooth_manager_update(17300);
+    CHECK(strcmp(phones.name, fake_hal_bluetooth()->connected.name) == 0);
+}
+static void later_status_reports_do_not_reject_an_approved_session(void)
+{
+    reset(); pair();
+    int disconnects = fake_hal_bluetooth_disconnect_count();
+    fake_hal_bluetooth()->connected.address[0] ^= 0x80;
+    bluetooth_manager_update(3000);
+    bluetooth_manager_update(4000);
+    CHECK_EQUAL(disconnects, fake_hal_bluetooth_disconnect_count());
+    CHECK(fake_hal_bluetooth()->streaming);
+    CHECK(bluetooth_manager_is_connected(bluetooth_manager_device(0)));
+    CHECK(bluetooth_manager_forget(0));
+    CHECK_EQUAL(disconnects + 1, fake_hal_bluetooth_disconnect_count());
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    bluetooth_manager_update(5000);
+    CHECK_EQUAL(disconnects + 2, fake_hal_bluetooth_disconnect_count());
+}
+
+static void initial_status_address_does_not_cancel_the_requested_headphones(void)
+{
+    reset();
+    bluetooth_manager_set_enabled(true, 1000);
+    HalBluetoothStatus *status = fake_hal_bluetooth();
+    status->state = HAL_BLUETOOTH_READY;
+    status->devices[0] = phones;
+    status->device_count = 1;
+    bluetooth_manager_pairing(true);
+    bluetooth_manager_pair(0, 1500);
+    status->state = HAL_BLUETOOTH_CONNECTED;
+    status->connected.address[0] ^= 0x80;
+    status->connected.name[0] = 0;
+    bluetooth_manager_update(2000);
+    CHECK_EQUAL(0, fake_hal_bluetooth_disconnect_count());
+    CHECK_EQUAL(1, bluetooth_manager_count());
+    CHECK(memcmp(phones.address, bluetooth_manager_device(0)->address, 6) == 0);
+    bluetooth_manager_update(2999);
+    CHECK(!status->streaming);
+    bluetooth_manager_update(3000);
+    CHECK(status->streaming);
+}
+
+static void discovering_a_device_never_pairs_without_a_click(void)
+{
+    reset(); press(KEY_WHEEL_DOWN); press(KEY_PLAY);
+    HalBluetoothStatus *status = fake_hal_bluetooth();
+    status->state = HAL_BLUETOOTH_READY;
+    ui.screen.update(&ui, 1500);
+    status->devices[0] = phones;
+    status->device_count = 1;
+    for (uint32_t now = 2000; now <= 20000; now += 1000) {
+        bluetooth_manager_update(now);
+        ui.screen.update(&ui, now);
+    }
+    CHECK_EQUAL(0, fake_hal_bluetooth_connect_count());
+    CHECK_EQUAL(0, bluetooth_manager_count());
+    status->state = HAL_BLUETOOTH_CONNECTED;
+    status->connected = phones;
+    bluetooth_manager_update(21000);
+    CHECK_EQUAL(0, bluetooth_manager_count());
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, status->state);
+    CHECK(!status->streaming);
+    list_view_select(&ui.list, 2, 22000);
+    ui.screen.handle_key(&ui, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 22000);
+    CHECK_EQUAL(1, fake_hal_bluetooth_connect_count());
+    CHECK(!fake_hal_bluetooth_last_reconnect());
+    status->state = HAL_BLUETOOTH_CONNECTED;
+    bluetooth_manager_update(23000);
+    CHECK_EQUAL(1, bluetooth_manager_count());
+}
+
+static void pairing_menu_cancels_and_pauses_saved_device_reconnects(void)
+{
+    reset(); pair();
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
+    bluetooth_manager_update(4000); bluetooth_manager_update(6100);
+    CHECK(fake_hal_bluetooth_last_reconnect());
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, fake_hal_bluetooth()->state);
+    int attempts = fake_hal_bluetooth_connect_count();
+    bluetooth_manager_pairing(true);
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, fake_hal_bluetooth()->state);
+    bluetooth_manager_update(20000);
+    CHECK_EQUAL(attempts, fake_hal_bluetooth_connect_count());
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    fake_hal_bluetooth()->connected = phones;
+    bluetooth_manager_update(21000);
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, fake_hal_bluetooth()->state);
+    CHECK_EQUAL(1, bluetooth_manager_count());
+}
+
+static void a_matching_name_does_not_authorize_an_unknown_address(void)
+{
+    reset(); pair(); bluetooth_manager_init(4000);
     HalBluetoothStatus *status = fake_hal_bluetooth();
     status->state = HAL_BLUETOOTH_CONNECTED;
-    status->connected = status->devices[0];
-    status->streaming = true;
-    screen->update(screen->context, START_MS + 200);
-    CHECK(line_is(0, "Connected · WH-1000XM4 · Streaming"));
+    status->connected = phones;
+    status->connected.address[0] ^= 0x80;
+    bluetooth_manager_update(5000);
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, status->state);
+    CHECK_EQUAL(1, bluetooth_manager_count());
+    CHECK(memcmp(phones.address, bluetooth_manager_device(0)->address, 6) == 0);
 }
 
 int main(void)
 {
     static const TestCase cases[] = {
-        TEST_CASE(entering_powers_the_module_on),
-        TEST_CASE(a_ready_module_starts_one_scan),
-        TEST_CASE(play_scans_again),
-        TEST_CASE(back_powers_the_module_off_and_leaves),
-        TEST_CASE(the_state_line_shows_the_version_and_link_status),
-        TEST_CASE(no_reply_is_reported),
-        TEST_CASE(the_link_line_counts_bytes_frames_and_overruns),
-        TEST_CASE(the_last_bytes_show_in_hex),
-        TEST_CASE(nothing_received_says_so),
-        TEST_CASE(found_devices_are_listed),
-        TEST_CASE(volume_keys_move_the_selection_and_wrap),
-        TEST_CASE(play_pairs_the_selected_device),
-        TEST_CASE(holding_play_scans_again),
-        TEST_CASE(holding_play_while_connected_disconnects),
-        TEST_CASE(the_state_line_shows_the_pairing_result),
-        TEST_CASE(the_connected_device_is_ticked),
-        TEST_CASE(play_while_connected_toggles_the_stream),
-        TEST_CASE(the_state_line_shows_the_stream),
+        TEST_CASE(off_by_default_and_opening_does_not_enable),
+        TEST_CASE(discovering_a_device_never_pairs_without_a_click),
+        TEST_CASE(pairing_menu_cancels_and_pauses_saved_device_reconnects),
+        TEST_CASE(a_matching_name_does_not_authorize_an_unknown_address),
+        TEST_CASE(initial_status_address_does_not_cancel_the_requested_headphones),
+        TEST_CASE(later_status_reports_do_not_reject_an_approved_session),
+        TEST_CASE(pairing_menu_waits_for_ready_then_searches),
+        TEST_CASE(connection_is_saved_and_audio_starts_automatically),
+        TEST_CASE(saved_device_reconnects_without_discovery_after_reload),
+        TEST_CASE(powered_off_headphones_are_retried_and_can_return),
+        TEST_CASE(manual_disconnect_stays_disconnected_until_requested),
+        TEST_CASE(off_is_saved_and_preserves_devices),
+        TEST_CASE(forget_requires_confirmation_and_prevents_reconnection),
+        TEST_CASE(corrupted_storage_defaults_to_off),
+        TEST_CASE(selecting_saved_device_can_turn_bluetooth_on),
+        TEST_CASE(reconnect_prefers_last_device_then_tries_other_saved_devices),
     };
-    return test_run_all(cases, TEST_CASE_COUNT(cases));
+    return test_run_all(cases, sizeof cases / sizeof cases[0]);
 }

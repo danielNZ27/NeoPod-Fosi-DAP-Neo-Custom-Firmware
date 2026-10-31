@@ -3,6 +3,8 @@
 #include "hal/bluetooth.h"
 #include "hal/clock.h"
 
+void hal_bluetooth_save_trace(void) {}
+
 enum {
     READY_AFTER_MS = 300,
     DEVICE_EVERY_MS = 1000,
@@ -23,7 +25,7 @@ static const SimDevice DEVICES[] = {
 typedef struct SimBluetooth {
     HalBluetoothStatus status;
     uint32_t since_ms;
-    uint8_t target;
+    HalBluetoothDevice target;
 } SimBluetooth;
 
 static SimBluetooth bluetooth;
@@ -56,9 +58,14 @@ void hal_bluetooth_connect(uint8_t index)
     if (!idle || index >= bluetooth.status.device_count) {
         return;
     }
-    bluetooth.target = index;
+    bluetooth.target = bluetooth.status.devices[index];
     bluetooth.status.pairing = HAL_BLUETOOTH_PAIRING_NONE;
     enter_state(HAL_BLUETOOTH_CONNECTING);
+}
+
+void hal_bluetooth_stop_scan(void)
+{
+    if (bluetooth.status.state == HAL_BLUETOOTH_SCANNING) enter_state(HAL_BLUETOOTH_READY);
 }
 
 void hal_bluetooth_disconnect(void)
@@ -72,7 +79,7 @@ void hal_bluetooth_disconnect(void)
 static void finish_connect(void)
 {
     bluetooth.status.pairing = HAL_BLUETOOTH_PAIRED;
-    bluetooth.status.connected = bluetooth.status.devices[bluetooth.target];
+    bluetooth.status.connected = bluetooth.target;
     enter_state(HAL_BLUETOOTH_CONNECTED);
 }
 
@@ -115,4 +122,14 @@ void hal_bluetooth_set_stream(bool on)
     if (bluetooth.status.state == HAL_BLUETOOTH_CONNECTED) {
         bluetooth.status.streaming = on;
     }
+}
+
+void hal_bluetooth_connect_device(const HalBluetoothDevice *device, bool reconnect)
+{
+    (void)reconnect;
+    HalBluetoothState state = bluetooth.status.state;
+    if (state != HAL_BLUETOOTH_READY && state != HAL_BLUETOOTH_SCANNING) return;
+    bluetooth.target = *device;
+    bluetooth.status.pairing = HAL_BLUETOOTH_PAIRING_NONE;
+    enter_state(HAL_BLUETOOTH_CONNECTING);
 }

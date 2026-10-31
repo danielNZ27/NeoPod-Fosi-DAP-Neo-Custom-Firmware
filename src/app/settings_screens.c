@@ -381,6 +381,12 @@ Screen *settings_screens_init(SettingsScreens *screens, SettingsContext context,
     };
     screens->audio_items[1] = make_choice_item(screens, CHOICE_GAIN);
     screens->audio_items[2] = make_choice_item(screens, CHOICE_OUTPUT);
+    screens->audio_items[3] = (MenuItem){
+        .label = "Bluetooth",
+        .select = menu_open_screen,
+        .context = bluetooth_screen_init(&screens->bluetooth, theme),
+        .opens = true
+    };
     menu_screen_init(&screens->audio_menu, (MenuConfig){
         .title = "Audio",
         .items = screens->audio_items,

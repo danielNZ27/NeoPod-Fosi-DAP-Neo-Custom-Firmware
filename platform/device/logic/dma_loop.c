@@ -41,3 +41,15 @@ uint32_t dma_loop_position(uint32_t source, uint32_t buffer, uint32_t words)
     uint32_t position = (source - buffer) / WORD_BYTES;
     return position < words ? position : 0;
 }
+
+bool dma_ring_resume_item(DmaItem *item, uint32_t count, uint32_t buffer,
+                          uint32_t words_per_item, uint32_t items_address, uint32_t offset_words)
+{
+    if (!count || !words_per_item || words_per_item > DMA_MAX_BLOCK_WORDS ||
+        offset_words >= count * words_per_item || offset_words % 2) return false;
+    uint32_t block = offset_words / words_per_item;
+    uint32_t remaining = words_per_item - offset_words % words_per_item;
+    uint32_t next = items_address + ((block + 1) % count) * (uint32_t)sizeof(DmaItem);
+    *item = dma_loop_item(buffer + offset_words * WORD_BYTES, remaining, next);
+    return true;
+}

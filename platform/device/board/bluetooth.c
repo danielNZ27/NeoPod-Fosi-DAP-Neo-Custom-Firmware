@@ -1,9 +1,12 @@
 #include "hal/bluetooth.h"
 #include "board.h"
 #include "cru.h"
+#include "dac.h"
 #include "device/bt_module.h"
 #include "gpio.h"
 #include "hal/clock.h"
+#include "hal/storage.h"
+#include "core/string_builder.h"
 #include "registers.h"
 
 #define UART1_BASE 0x400B0000u
@@ -48,12 +51,32 @@ enum {
 static const GpioPin MODULE_POWER = {2, 7};
 static const GpioPin UART_PIN_A = {2, 16};
 static const GpioPin UART_PIN_B = {2, 17};
+#ifndef ECHO_BOARD_NEO
 static const GpioPin AUDIO_MUTE = {2, 0};
 static const GpioPin WIRED_OUTPUT = {2, 14};
+#endif
 
 static BtModule module;
 static bool powered;
 static bool routed;
+static bool stream_requested;
+static bool audio_muted;
+
+typedef struct TraceEntry {
+    uint32_t ms;
+    uint8_t kind, length, bytes[10];
+} TraceEntry;
+static TraceEntry history[64];
+static uint8_t history_next, history_count;
+static bool trace_pending;
+static void trace(uint8_t kind, const uint8_t *bytes, uint8_t length)
+{
+    TraceEntry *entry = &history[history_next];
+    *entry = (TraceEntry){.ms = hal_clock_milliseconds(), .kind = kind, .length = length};
+    for (uint8_t i = 0; i < length; ++i) entry->bytes[i] = bytes[i];
+    history_next = (uint8_t)((history_next + 1) % 64);
+    if (history_count < 64) ++history_count;
+}
 
 static void uart_write(uint32_t offset, uint32_t value)
 {
@@ -78,6 +101,7 @@ static void pins_off(void)
 void board_bluetooth_off(void)
 {
     pins_off();
+    audio_muted = true;
 }
 
 static void uart_clock_on(void)
@@ -134,18 +158,18 @@ static void power_on(void)
 
 static void route_to_module(bool to_module)
 {
-    gpio_output(AUDIO_MUTE, to_module);
 #ifndef ECHO_BOARD_NEO
+    gpio_output(AUDIO_MUTE, to_module);
     gpio_output(WIRED_OUTPUT, !to_module);
 #else
-    (void)WIRED_OUTPUT;
+    dac_path_set_bluetooth_route(to_module);
 #endif
     routed = to_module;
 }
 
 static void follow_stream(void)
 {
-    if (module.status.streaming) {
+    if (stream_requested && module.status.state == HAL_BLUETOOTH_CONNECTED) {
         route_to_module(true);
     } else if (routed) {
         route_to_module(false);
@@ -154,6 +178,8 @@ static void follow_stream(void)
 
 static void power_off(void)
 {
+    if (powered) { const uint8_t value = 0; trace('P', &value, 1); trace_pending = true; }
+    stream_requested = false;
     pins_off();
     powered = false;
     if (routed) {
@@ -164,7 +190,9 @@ static void power_off(void)
 void hal_bluetooth_set_power(bool on)
 {
     if (on) {
-        power_on();
+        if (!powered) {
+            power_on();
+        }
         return;
     }
     power_off();
@@ -173,6 +201,8 @@ void hal_bluetooth_set_power(bool on)
 
 static void send(const BtModuleFrame *frame)
 {
+    trace('T', frame->bytes, frame->length);
+    if (frame->length >= 2 && frame->bytes[1] == 'T') trace_pending = true;
     for (uint8_t index = 0; index < frame->length; index++) {
         uint32_t polls = 0;
         while ((uart_read(UART_STATUS) & STATUS_TX_NOT_FULL) == 0 && polls < TX_WAIT_POLLS) {
@@ -198,10 +228,24 @@ void hal_bluetooth_connect(uint8_t index)
     }
 }
 
+void hal_bluetooth_stop_scan(void)
+{
+    BtModuleFrame frame;
+    if (powered && bt_module_stop_scan(&module, hal_clock_milliseconds(), &frame)) send(&frame);
+}
+
 void hal_bluetooth_disconnect(void)
 {
     BtModuleFrame frame;
     if (powered && bt_module_disconnect(&module, hal_clock_milliseconds(), &frame)) {
+        send(&frame);
+    }
+}
+
+void hal_bluetooth_connect_device(const HalBluetoothDevice *device, bool reconnect)
+{
+    BtModuleFrame frame;
+    if (powered && bt_module_connect_device(&module, device, reconnect, hal_clock_milliseconds(), &frame)) {
         send(&frame);
     }
 }
@@ -216,6 +260,8 @@ static void note_fifo_level(void)
 
 static void receive(uint32_t now_ms)
 {
+    uint8_t bytes[10];
+    uint8_t length = 0;
     note_fifo_level();
     for (int count = 0; count < RX_BYTES_PER_SERVICE; count++) {
         uint32_t line = uart_read(UART_LINE_STATUS);
@@ -223,10 +269,14 @@ static void receive(uint32_t now_ms)
             module.status.link.overruns++;
         }
         if ((line & LINE_DATA_READY) == 0) {
-            return;
+            break;
         }
-        bt_module_receive(&module, (uint8_t)uart_read(UART_DATA), now_ms);
+        uint8_t byte = (uint8_t)uart_read(UART_DATA);
+        bytes[length++] = byte;
+        bt_module_receive(&module, byte, now_ms);
+        if (length == sizeof bytes) { trace('R', bytes, length); length = 0; }
     }
+    if (length) trace('R', bytes, length);
 }
 
 void hal_bluetooth_service(void)
@@ -237,8 +287,15 @@ void hal_bluetooth_service(void)
     uint32_t now_ms = hal_clock_milliseconds();
     receive(now_ms);
     BtModuleFrame frame;
+    HalBluetoothState before = module.status.state;
     if (bt_module_poll(&module, now_ms, &frame)) {
         send(&frame);
+    }
+    if (before != module.status.state) {
+        const uint8_t states[] = {(uint8_t)before, (uint8_t)module.status.state,
+                                 (uint8_t)module.status.link_status};
+        trace('S', states, sizeof states);
+        if (before == HAL_BLUETOOTH_CONNECTED) trace_pending = true;
     }
     follow_stream();
     if (module.status.state == HAL_BLUETOOTH_NO_REPLY) {
@@ -253,8 +310,55 @@ const HalBluetoothStatus *hal_bluetooth_status(void)
 
 void hal_bluetooth_set_stream(bool on)
 {
+    stream_requested = on;
+    on = on && !audio_muted;
     BtModuleFrame frame;
-    if (powered && bt_module_set_stream(&module, on, hal_clock_milliseconds(), &frame)) {
-        send(&frame);
+    if (powered && module.status.state == HAL_BLUETOOTH_CONNECTED && module.status.streaming != on) {
+        if (on) board_audio_prepare_bluetooth_start();
+        if (bt_module_set_stream(&module, on, hal_clock_milliseconds(), &frame)) send(&frame);
     }
+    follow_stream();
+}
+
+bool board_bluetooth_routed(void)
+{
+    return stream_requested && module.status.state == HAL_BLUETOOTH_CONNECTED;
+}
+
+void board_bluetooth_audio_mute(bool mute)
+{
+    if (audio_muted != mute) { const uint8_t value = mute; trace('A', &value, 1); }
+    audio_muted = mute;
+    hal_bluetooth_set_stream(stream_requested);
+}
+
+void hal_bluetooth_save_trace(void)
+{
+    if (!trace_pending || module.status.state == HAL_BLUETOOTH_CONNECTED) return;
+    trace_pending = false;
+    static char text[4096];
+    StringBuilder builder = string_builder_make(text, sizeof text);
+    string_builder_append(&builder, "NeoPod V170 Bluetooth: T=TX R=RX S=state A=audio mute P=power\nstate=");
+    string_builder_append_unsigned(&builder, module.status.state);
+    string_builder_append(&builder, " requested=");
+    string_builder_append_unsigned(&builder, stream_requested);
+    string_builder_append(&builder, " muted=");
+    string_builder_append_unsigned(&builder, audio_muted);
+    string_builder_append(&builder, " gpio2=");
+    string_builder_append_unsigned(&builder, register_read(GPIO2_BASE + GPIO_DATA));
+    string_builder_append(&builder, "\n");
+    static const char hex[] = "0123456789ABCDEF";
+    for (uint8_t i = 0; i < history_count; ++i) {
+        const TraceEntry *entry = &history[(history_next + 64 - history_count + i) % 64];
+        string_builder_append_unsigned(&builder, entry->ms);
+        string_builder_append_char(&builder, ' ');
+        string_builder_append_char(&builder, (char)entry->kind);
+        for (uint8_t j = 0; j < entry->length; ++j) {
+            string_builder_append_char(&builder, ' ');
+            string_builder_append_char(&builder, hex[entry->bytes[j] >> 4]);
+            string_builder_append_char(&builder, hex[entry->bytes[j] & 15]);
+        }
+        string_builder_append_char(&builder, '\n');
+    }
+    hal_file_write("/.echo/neo-bt.txt", text, (uint32_t)builder.length);
 }

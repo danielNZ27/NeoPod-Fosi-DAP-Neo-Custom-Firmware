@@ -1,5 +1,6 @@
 add_library(echo_app STATIC
     app.c
+    bluetooth_manager.c
     boot_image.c
     card_files.c
     app_screens.c
