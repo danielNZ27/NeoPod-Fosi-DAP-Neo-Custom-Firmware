@@ -1,180 +1,129 @@
 # NeoPod
 
+[![Release](https://img.shields.io/github/v/release/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware?color=teal&label=Latest%20Release)](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 **NeoPod** is an open-source custom firmware for the **Fosi Audio DAP Neo** digital audio player. It brings a clean, retro iPod-style interface, smooth navigation, album artwork support, Bluetooth audio with saved devices and automatic reconnect, and bit-perfect wired playback powered by a dual-core audio architecture.
 
-## Screenshots
+---
 
-A few screenshots of different menus/pages within NeoPod and a sample of some of the colours you can use! 
+> [!CAUTION]
+> **Use at your own risk.** Installing custom firmware carries inherent risks. The authors and contributors are not responsible for bricked devices, lost data, or hardware damage. This is an independent community project and is **not affiliated with or endorsed by Fosi Audio**.
 
-| Lock screen · Teal | Home screen · Purple | Cover Flow |
+---
+
+## ✨ Features
+
+- **Retro UI & Theming**: Classic iPod navigation layout, customizable accent colors (Teal, Purple, Green, Orange, Magenta), smooth Cover Flow view, and an authentic iPod Classic theme.
+- **Dual-Core Audio Engine**: Bit-perfect wired decoding offloaded to CPU Core 1 for pop-free, hardware-accelerated playback.
+- **Comprehensive Codec Support**: Native playback for FLAC (up to 24-bit / 192 kHz), MP3, AAC-LC, Ogg Opus, and uncompressed WAV.
+- **Smart Bluetooth Stack**: Low-latency pairing, automatic reconnection, and storage for up to 6 saved devices with seamless PCM anti-pop transitions.
+- **Advanced Sound Tuning**: 5-band custom EQ (-12 dB to +12 dB) with user presets, plus ReplayGain track/album modes with anti-clipping protection.
+- **Fast Media Indexing**: Embedded ID3/Vorbis cover extraction and directory-level artwork scanning (`cover.jpg`, `folder.jpg`).
+
+---
+
+## 📸 Interface Preview
+
+| Lock Screen | Home (Custom Accent) | Cover Flow |
 | :---: | :---: | :---: |
-| ![Lock screen with teal unlock progress](assets/screenshots/lock-teal.png) | ![Home screen with purple buttons](assets/screenshots/home-purple.png) | ![Cover Flow with album artwork and the blue theme selected](assets/screenshots/cover-flow-blue.png) |
-| **Settings menu · Green** | **Colours menu · Orange** | **Custom EQ · Pink** |
-| ![Settings menu with green buttons](assets/screenshots/settings-green.png) | ![Colours menu with Orange selected](assets/screenshots/colours-orange.png) | ![Custom EQ with pink selection and a five-band curve](assets/screenshots/custom-eq-magenta.png) |
+| ![Lock screen](assets/screenshots/lock-teal.png) | ![Home screen](assets/screenshots/home-purple.png) | ![Cover Flow](assets/screenshots/cover-flow-blue.png) |
 
----
-
-## 🙏 Credits
-
-NeoPod is a direct hardware port of **[EchoPod](https://github.com/BasilSkyWalk/echopod)** by **BasilSkyWalk** and the EchoPod open-source contributors. 
-
-Huge credit and gratitude go to the original EchoPod developers for creating the user interface, audio engine, theme framework, and core system architecture. NeoPod adapts this foundation specifically for the Fosi Audio DAP Neo's Rockchip SoC, ST7789 portrait display bus, custom GPIO/DAC routing, and key ladder.
-
----
-
-## ⚠️ Disclaimer
-
-> [!IMPORTANT]
-> **Use at your own risk.** The author and contributors of this project are **NOT responsible** for any device damage, data loss, bricked hardware, or hardware failure that may result from installing or using this software.
-> 
-> This is an independent, community-developed open-source project. The author is **NOT affiliated with, endorsed by, or connected to Fosi Audio in ANY WAY.**
-
----
-
-## Latest release: v1.7.0
-
-[Download v1.7.0](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/tag/V1.7.0) · [Release notes](release/RELEASE-v1.7.0.md) · [Detailed changelog](CHANGELOG.md)
-
-Adds **Bluetooth audio**, an explicit pairing menu, saved devices, automatic reconnect, and pop-free play/pause and track switching confirmed on the owner's Neo/headphone setup. Includes the existing iPod Classic theme, boot artwork, artwork scaling and playback features.
-
-**Upgrading from v1.6.2:** flash **DP3_V170.IMG** and replace **`.echo/neo_scan.bin`** on your MicroSD card. The decoder files and `boot.rgb565` are unchanged. Preserve existing settings, `bluetooth.bin`, library and artwork. Release downloads are individual files; no ZIP extraction is needed. For a first installation, download all matching [SD companion files](release/sd-card/.echo).
-
-Choose **Settings → Display & Controls → Theme → iPod Classic** for silver headers, white menus and blue highlights. Now Playing uses larger artwork and a dark background while preserving the Neo's playback, volume, shuffle/repeat and seek controls. Choose **NeoPod** to return to the original theme and your saved button colour.
-
-| iPod Classic menus | iPod Classic Now Playing | Boot artwork |
+| Custom EQ | iPod Classic Theme | Bluetooth Manager |
 | :---: | :---: | :---: |
-| ![iPod Classic home menu](assets/screenshots/ipod-home.png) | ![iPod Classic playback controls](assets/screenshots/ipod-now-playing.png) | ![NeoPod boot artwork](assets/boot.png) |
-
-### Bluetooth
-
-Open **Settings → Audio → Bluetooth**. Bluetooth defaults to **Off** on a fresh setup and remembers your chosen On/Off setting.
-
-- **Pair new device:** put your headphones in pairing mode, then click their name. Discovery alone never pairs a device. Background reconnect pauses while you browse this menu.
-- **Saved devices:** select **Connect**, **Disconnect**, or **Forget device**. Up to six devices are remembered. Forget asks for confirmation and removes the saved NeoPod entry.
-- While Bluetooth is On, previously saved devices reconnect automatically when available. Selecting Disconnect keeps that session disconnected until you choose Connect or toggle Bluetooth Off/On.
-- Audio starts automatically after connection; there is no extra Streaming button. PCM fades and a continuous silent feed avoid the reported play/pause/skip pop.
-
-[Bluetooth guide and limitations](docs/bluetooth.md)
-
-| Bluetooth settings | Pair a device | Saved-device controls |
-| :---: | :---: | :---: |
-| ![Bluetooth off by default](assets/screenshots/bluetooth-main.png) | ![Explicit headphone selection in the pairing menu](assets/screenshots/bluetooth-pair.png) | ![Disconnect and Forget device controls](assets/screenshots/bluetooth-device.png) |
-
-## 🎵 Supported Audio Formats & Codecs
-
-NeoPod features hardware-accelerated playback offloaded to the secondary processor core (Core 1):
-
-| Format | File Extension | Specifications & Features | Decoding Engine |
-| :--- | :--- | :--- | :--- |
-| **FLAC** | `.flac` | Free Lossless Audio Codec (16-bit / 24-bit, up to 192 kHz bit-perfect lossless), Vorbis Comments, embedded artwork | Hardware Core 1 (`neo_flac.bin`) |
-| **MP3** | `.mp3` | MPEG Audio Layer III (CBR & VBR up to 320 kbps), ID3v1 / ID3v2.3 / ID3v2.4 tags, embedded artwork | Hardware Core 1 (`neo_mp3.bin`) |
-| **AAC-LC** | `.m4a` | AAC-LC in supported MP4/M4A containers | Helix AAC on Core 1 (`neo_aac.bin`) |
-| **Opus** | `.opus` | Ogg Opus, native 48 kHz playback, pre-skip handling | libopus on Core 1 (`neo_opus.bin`) |
-| **WAV** | `.wav` | Uncompressed Linear PCM (16-bit / 24-bit RIFF/WAVE) | System Core |
-
-### Equalizer and ReplayGain
-
-- Five EQ bands: 100 Hz, 300 Hz, 1 kHz, 3 kHz and 10 kHz; -12 to +12 dB.
-- Built-in presets and up to eight named user presets.
-- Custom EQ: turn the wheel to choose a band, press OK to adjust, turn to change gain, then press OK to confirm/save. Selection wraps through all five bands.
-- ReplayGain Off, Track and Album modes, with peak-based anti-clipping when peak tags are available.
-- EQ and ReplayGain are audio processing; sample-exact output applies when processing is neutral.
-
-### Artwork & Metadata Support
-- **Embedded Artwork:** Automatically extracts embedded JPEG and PNG front album covers from FLAC and MP3 files.
-- **Folder Artwork:** Reads external image files in the album folder (e.g. `cover.jpg`, `folder.jpg`, `cover.png`).
-- **Music Library Tagging:** Fast library scanning and cataloging by Artist, Album, Track, and Title handled by the background indexer (`neo_scan.bin`).
+| ![Custom EQ](assets/screenshots/custom-eq-magenta.png) | ![iPod Classic layout](assets/screenshots/ipod-home.png) | ![Bluetooth menu](assets/screenshots/bluetooth-main.png) |
 
 ---
 
-## 🚀 Installation Guide (First Time from Stock Firmware)
+## 📥 Installation
 
-Follow these steps if your DAP Neo is currently running the factory stock firmware:
+### Method 1: First-Time Install (From Stock Firmware)
 
-### 1. Download Release Files
-From the [`release/`](./release/) folder in this repository, obtain:
-- `DP3_V170.IMG` (The NeoPod firmware image)
-- The `sd-card/.echo` folder (containing `neo_flac.bin`, `neo_mp3.bin`, `neo_aac.bin`, `neo_opus.bin`, `neo_scan.bin`, and `boot.rgb565`)
-
-### 2. Copy Files to the DAP Neo
-1. Power on your DAP Neo normally and connect it to your PC using a USB-C cable.
-2. Two drives will mount on your computer:
-   - The **Internal Storage** drive
-   - The **MicroSD Card** drive
-3. Copy **`DP3_V170.IMG`** directly to the **root** of the **Internal Storage** drive (`/`).
-4. Copy the entire **`.echo`** folder directly to the **root** of your **MicroSD Card** (`/`).
-   *(The `.echo` folder must be in the root directory so the path is `[SD Card]:\.echo\neo_*.bin`)*.
-
-### 3. Apply the Firmware
-1. Safely eject and unplug the USB-C cable from the DAP Neo.
-2. The player's stock bootloader will detect `DP3_V170.IMG` and begin the flashing process.
-3. Once completed, the player will automatically reboot directly into **NeoPod**! (May not auto reboot. In this instance use a paperclip or pinhead to press the button next to the USB C port. just press it once, don't need to hold, then can power DAP Neo on)
+1. Download **`DP3_V170.IMG`** and the **`sd-card/.echo/`** companion folder from the [Latest Release](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/latest).
+2. Connect your DAP Neo to your computer via USB-C and power it on.
+3. Place **`DP3_V170.IMG`** directly in the root directory of the player's **Internal Storage**.
+4. Copy the entire **`.echo`** directory to the root directory of your **MicroSD Card** (resulting in `[SD Card]:/.echo/neo_*.bin`).
+5. Safely unmount and disconnect the USB cable.
+6. The stock bootloader will automatically detect the image and flash NeoPod.
+   > *Note: If the player does not reboot automatically after flashing, press the hardware reset pinhole next to the USB-C port once.*
 
 ---
 
-## 🔄 Updating NeoPod (Direct Flashing)
+### Method 2: Updating an Existing NeoPod Install (Direct Flashing)
 
-Updating to a newer version of NeoPod is fast and does **NOT** require reverting to factory stock firmware:
+You can flash new firmware images directly using the Rockchip bootloader interface without reverting to stock:
 
-### 1. Download the New Release
-- Download the new `DP3_Vxxx.IMG` file (from [`release/`](./release/)).
-- Update any matching companion decoders in `[MicroSD Card]:\.echo\` if the release includes newer companion files.
-
-### 2. Flash Directly via Rockusb Mode
-1. Unplug the USB cable and ensure the DAP Neo is turned off (hold **Power** for 3–5 seconds until screen turns off).
-2. Press and hold **VOL +**, **VOL -**, and **Center / OK** simultaneously (do **not** touch Power).
-3. While continuing to hold those 3 buttons, plug the USB-C cable into your PC. Keep holding for 3–5 seconds, then release. The screen remains black in recovery mode.
-4. Run the flashing script:
-   ```cmd
+1. Power off the device (hold **Power** for 5 seconds).
+2. Hold **VOL +**, **VOL -**, and **Center / OK** simultaneously (leave **Power** untouched).
+3. Connect the USB-C cable to your PC while holding the three buttons; release after 3–5 seconds. The screen will remain black in Rockusb recovery mode.
+4. Flash the update image:
+   ```bash
    python flash-neo.py release/DP3_V170.IMG
    ```
-5. The script flashes both firmware slots, verifies the Slot 1 header, requests a reset and checks whether the live recovery interface disconnects. If normal reset leaves it in recovery, it tries Rockchip's normal-boot/MSC reset mode. If restart cannot be confirmed, it tells you to use the pinhole reset; another flash is not needed.
+5. Update any companion decoders in `[SD Card]:/.echo/` if specified in the [Release Notes](CHANGELOG.md).
 
 ---
 
-## 🎮 Controls & Navigation
+## 🎛️ Navigation & Controls
 
-| Control | Action |
+| Control | Function |
 | :--- | :--- |
-| **Scroll Wheel** | Scroll through menus and lists; choose/adjust Custom EQ bands |
-| **Vol+ / Vol-** | Adjust playback volume |
-| **Center / OK (Single Press)** | Select / Play / Enter menu |
-| **Center / OK (Double Tap)** | Back / Return to previous screen |
-| **Power Button (Short Press)** | Screen sleep / wake |
-| **Power Button (Long Hold)** | Power off (Goodbye screen) |
+| **Scroll Wheel** | Navigate menus, scroll lists, and adjust EQ sliders |
+| **Center / OK (Single Press)** | Confirm / Select / Play / Pause |
+| **Center / OK (Double Press)** | Back / Return to parent screen |
+| **VOL+ / VOL-** | Master volume control |
+| **Power (Short Press)** | Screen wake / sleep |
+| **Power (Long Press)** | System power off |
 
 ---
 
-## 🛠️ Companion Files (`.echo` on MicroSD)
+## 🎧 Audio Engine & Supported Formats
 
-NeoPod utilizes the DAP Neo's secondary CPU core (Core 1) for real-time audio decoding and background database indexing:
-- `neo_flac.bin`: Dedicated hardware FLAC audio decoder for Core 1.
-- `neo_mp3.bin`: Dedicated hardware MP3 audio decoder for Core 1.
-- `neo_aac.bin`: AAC-LC decoder for Core 1.
-- `neo_opus.bin`: Ogg Opus decoder for Core 1.
-- `neo_scan.bin`: Ultra-fast library rescan and metadata engine.
+Decoding is handled across the Rockchip SoC to maximize battery efficiency and eliminate audio dropouts:
 
-*Always keep the `.echo` directory on your MicroSD card updated with the files matching your firmware release.*
+| Codec | Extensions | Specifications | Execution Core |
+| :--- | :--- | :--- | :--- |
+| **FLAC** | `.flac` | 16/24-bit up to 192 kHz, Vorbis comments, embedded art | Core 1 (`neo_flac.bin`) |
+| **MP3** | `.mp3` | CBR & VBR up to 320 kbps, ID3v1/v2 tags, embedded art | Core 1 (`neo_mp3.bin`) |
+| **AAC** | `.m4a` | AAC-LC containerized streams (Helix AAC) | Core 1 (`neo_aac.bin`) |
+| **Opus** | `.opus` | Ogg Opus 48 kHz native playback | Core 1 (`neo_opus.bin`) |
+| **WAV** | `.wav` | Linear PCM (16/24-bit RIFF/WAVE) | Core 0 (System Core) |
+
+### MicroSD Companion Binaries (`.echo/`)
+Ensure the following files remain in the root `.echo/` directory on your MicroSD card:
+- `neo_flac.bin` / `neo_mp3.bin` / `neo_aac.bin` / `neo_opus.bin`: Secondary core audio decoders.
+- `neo_scan.bin`: Background tag indexer and metadata parser.
+- `boot.rgb565`: Custom boot animation asset.
 
 ---
 
-## 💻 Building from Source
+## 🛠️ Building from Source
 
-### Requirements
-- **CMake** 3.20+
-- **Ninja** build system
-- **ARM GNU Toolchain** (`arm-none-eabi-gcc`)
-- **Python** 3.8+
+### Prerequisites
+- CMake 3.20+
+- Ninja build system
+- ARM GNU Embedded Toolchain (`arm-none-eabi-gcc`)
+- Python 3.8+
 
-### Build Script
-To compile NeoPod and package the firmware image automatically:
+### Compile
+Run the build script to compile binaries and package the firmware image:
+
 ```powershell
 ./build-neopod.ps1
 ```
-The compiled firmware image and companion binaries will be packaged in `release/` and `release/sd-card/.echo/`. Intermediate build files are generated in `build/neo/`.
+
+Compiled images will be written to `release/`, and companion binaries will be staged in `release/sd-card/.echo/`.
+
+---
+
+## 🙏 Credits & Acknowledgments
+
+NeoPod is an adapted hardware port of **[EchoPod](https://github.com/BasilSkyWalk/echopod)** by **BasilSkyWalk** and the EchoPod open-source community. Gratitude goes to the upstream team for the core interface, theme engine, and audio routing architecture. 
+
+NeoPod adapts this system for the Fosi Audio DAP Neo's Rockchip platform, ST7789 portrait display interface, custom GPIO routing, and resistor key ladder.
 
 ---
 
 ## 📄 License
 
-NeoPod is licensed under the **GNU General Public License v3.0** (GPL-3.0), inheriting the open-source license of the upstream EchoPod project. See [LICENSE](./LICENSE) for details.
+This project is licensed under the [GNU General Public License v3.0](LICENSE) in accordance with the upstream EchoPod project.
