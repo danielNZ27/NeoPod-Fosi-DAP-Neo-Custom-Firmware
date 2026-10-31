@@ -45,9 +45,10 @@ Run-Checked $objcopy @('-O', 'binary', "$build/platform/device/echo_core1.elf", 
 Run-Checked $objcopy @('-O', 'binary', "$build/platform/device/echo_core1_aac.elf", "$build/platform/device/core1_aac.bin")
 Run-Checked $objcopy @('-O', 'binary', "$build/platform/device/echo_core1_opus.elf", "$build/platform/device/core1_opus.bin")
 
-Write-Host "Packaging NeoPod firmware image DP3_V161.IMG..."
-Run-Checked 'python' @("$repoRoot/tools/build_neo_image.py", '--version', '161',
-    '--elf', "$build/platform/device/echo_device.elf", '--output', "$out/DP3_V161.IMG",
+Write-Host "Packaging NeoPod firmware image DP3_V162.IMG..."
+Run-Checked 'python' @("$repoRoot/tools/build_boot_image.py", "$repoRoot/assets/boot.png", "$out/sd-card/.echo/boot.rgb565")
+Run-Checked 'python' @("$repoRoot/tools/build_neo_image.py", '--version', '162',
+    '--elf', "$build/platform/device/echo_device.elf", '--output', "$out/DP3_V162.IMG",
     '--overlay', "$build/platform/device/echo_rescan_overlay.elf",
     '--core1-mp3', "$build/platform/device/core1_mp3.bin",
     '--core1-flac', "$build/platform/device/core1.bin",
@@ -56,5 +57,5 @@ Run-Checked 'python' @("$repoRoot/tools/build_neo_image.py", '--version', '161',
     '--sd-output', "$out/sd-card/.echo")
 
 Write-Host "Build Complete!"
-Write-Host "Firmware Image: $out/DP3_V161.IMG"
+Write-Host "Firmware Image: $out/DP3_V162.IMG"
 Write-Host "Companion Decoders: $out/sd-card/.echo/"

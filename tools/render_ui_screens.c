@@ -52,6 +52,7 @@ int main(int argc, char **argv)
     fake_hal_reset();
     library.library = *fixture_library_open(&fixture);
     library.available = true;
+    favorites_store_load(&favorites, &library.library);
     player_init(&player, &library.library);
     if (!player_play_list(&player, (BrowseQuery){.kind = BROWSE_ALBUM_TRACKS,
         .group = LIBRARY_ARTISTS, .subject = 0, .artist = LIBRARY_NONE}, 0, 7)) return 1;
@@ -95,6 +96,33 @@ int main(int argc, char **argv)
     status(&canvas);
     if (!save(argv[1], "now-playing-orange")) return 1;
 
+    app_theme_apply(0);
+    CoverFlowScreen *flow = &screens.cover_flow;
+    flow->screen.enter(flow, 1000);
+    flow->screen.update(flow, 1000);
+    canvas_clear(&canvas, APP_THEME.colors.background);
+    flow->screen.draw(flow, &canvas);
+    if (!save(argv[1], "cover-flow-blue")) return 1;
+
+    app_theme_apply(1);
+    Screen *settings_screen = &screens.settings.menu.screen;
+    settings_screen->enter(settings_screen->context, 1000);
+    settings_screen->update(settings_screen->context, 1000);
+    canvas_clear(&canvas, APP_THEME.colors.background);
+    settings_screen->draw(settings_screen->context, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "settings-green")) return 1;
+
+    app_theme_apply(4);
+    custom_eq_screen_init(&screens.settings.equalizer.custom_eq, &settings, &APP_THEME);
+    Screen *eq_screen = &screens.settings.equalizer.custom_eq.screen;
+    eq_screen->enter(eq_screen->context, 1000);
+    eq_screen->update(eq_screen->context, 1000);
+    canvas_clear(&canvas, APP_THEME.colors.background);
+    eq_screen->draw(eq_screen->context, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "custom-eq-magenta")) return 1;
+
     app_theme_apply(2);
     WheelLock lock;
     wheel_lock_begin(&lock, 0);
@@ -102,6 +130,30 @@ int main(int argc, char **argv)
         wheel_lock_key(&lock, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, i);
     wheel_lock_draw(&lock, &canvas, &APP_THEME);
     if (!save(argv[1], "lock-teal")) return 1;
-    puts("Rendered Home / Purple, Now Playing / Orange and Lock / Teal.");
+    app_theme_select(1, 3);
+    settings.settings.theme = 1;
+    home->update(home->context, 1000);
+    canvas_clear(&canvas, APP_THEME.colors.background);
+    home->draw(home->context, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "ipod-home")) return 1;
+    canvas_clear(&canvas, APP_THEME.colors.background);
+    screens.settings.display_menu.screen.draw(&screens.settings.display_menu, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "ipod-settings")) return 1;
+    playing->screen.draw(playing, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "ipod-now-playing-controls")) return 1;
+    playing->selected_button = 5;
+    playing->scrubbing = true;
+    playing->screen.draw(playing, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "ipod-now-playing-seek")) return 1;
+    playing->scrubbing = false;
+    playing->controls_active = false;
+    playing->screen.draw(playing, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "ipod-now-playing")) return 1;
+    puts("Rendered all UI screens in multiple color themes successfully.");
     return 0;
 }

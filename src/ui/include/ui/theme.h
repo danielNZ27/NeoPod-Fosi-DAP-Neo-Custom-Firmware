@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdbool.h>
+
 #include "gfx/color.h"
 #include "gfx/font.h"
 #include "gfx/rect.h"
@@ -44,6 +46,7 @@ typedef struct ThemeMetrics {
 } ThemeMetrics;
 
 typedef struct Theme {
+    bool ipod;
     ThemeColors colors;
     ThemeFonts fonts;
     ThemeMetrics metrics;

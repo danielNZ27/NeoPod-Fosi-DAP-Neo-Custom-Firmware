@@ -551,7 +551,7 @@ static void draw_cover(const NowPlayingScreen *now_playing, Canvas *canvas)
 {
     const Theme *theme = now_playing->config.theme;
     bool is_portrait = theme_is_portrait(theme);
-    int size = is_portrait ? PORTRAIT_COVER_SIZE : COVER_FULL_SIZE;
+    int size = is_portrait ? (theme->ipod ? 184 : PORTRAIT_COVER_SIZE) : COVER_FULL_SIZE;
     int left = is_portrait ? (theme->metrics.screen_width - size) / 2
                            : theme->metrics.padding;
     int top = is_portrait ? PORTRAIT_COVER_TOP : COVER_TOP;
@@ -600,6 +600,15 @@ static void draw_track_text(const NowPlayingScreen *now_playing, Canvas *canvas)
     TextStyle title = {.font = theme->fonts.title, .color = theme->colors.text};
     TextStyle artist = {.font = theme->fonts.body, .color = theme->colors.text_secondary};
     TextStyle album = {.font = theme->fonts.body, .color = theme->colors.text_tertiary};
+    if (is_portrait && theme->ipod) {
+        draw_text_line(now_playing, canvas,
+                       (Label){line_area(theme, 214, TEXT_LINE_HEIGHT), now_playing->title},
+                       title, true);
+        draw_text_line(now_playing, canvas,
+                       (Label){line_area(theme, 236, TEXT_LINE_HEIGHT), now_playing->artist},
+                       artist, true);
+        return;
+    }
     if (is_portrait) {
         draw_text_line(
             now_playing, canvas,
@@ -640,7 +649,7 @@ static void draw_progress(const NowPlayingScreen *now_playing, Canvas *canvas)
     const Theme *theme = now_playing->config.theme;
     bool is_portrait = theme_is_portrait(theme);
     int top = is_portrait ? PORTRAIT_PROGRESS_TOP : PROGRESS_TOP;
-    Rect bar = line_area(theme, top, PROGRESS_HEIGHT);
+    Rect bar = line_area(theme, top, theme->ipod ? 5 : PROGRESS_HEIGHT);
     bool focused = is_portrait && now_playing->controls_active &&
                    now_playing->now_ms < now_playing->controls_active_until_ms &&
                    now_playing->selected_button == SEEK_CONTROL;
@@ -651,6 +660,7 @@ static void draw_progress(const NowPlayingScreen *now_playing, Canvas *canvas)
                                                      now_playing->status.duration_ms, bar.width);
     Color fill =
         now_playing->scrubbing || volume ? theme->colors.selection_background : theme->colors.text;
+    if (theme->ipod) fill = theme->colors.selection_background;
     if (focused || now_playing->scrubbing) {
         draw_outline(canvas, (Rect){bar.x - 3, bar.y - 3, bar.width + 6, bar.height + 6},
                      theme->colors.selection_background);
@@ -716,6 +726,7 @@ static void draw_outline(Canvas *canvas, Rect area, Color color)
 static void draw_format(const NowPlayingScreen *now_playing, Canvas *canvas)
 {
     const Theme *theme = now_playing->config.theme;
+    if (theme->ipod) return;
     HalAudioFormat format = now_playing->status.format;
     const char *codec = now_playing_codec_name(format.codec);
     if (codec[0] == '\0') {
@@ -752,6 +763,18 @@ static void draw_format(const NowPlayingScreen *now_playing, Canvas *canvas)
 static void draw_details(const NowPlayingScreen *now_playing, Canvas *canvas)
 {
     const Theme *theme = now_playing->config.theme;
+    if (theme->ipod) {
+        bool seeking = now_playing->scrubbing ||
+            (now_playing->controls_active && now_playing->now_ms < now_playing->controls_active_until_ms &&
+             now_playing->selected_button == SEEK_CONTROL);
+        if (seeking) {
+            TextStyle hint = {.font = theme->fonts.small, .color = theme->colors.text_secondary};
+            const char *text = now_playing->scrubbing ? "Wheel: Seek | OK: Jump" : "OK: Seek track";
+            Rect area = label_centered_area(hint.font, line_area(theme, 262, 18), text);
+            label_draw(canvas, hint, (Label){area, text});
+        }
+        return;
+    }
     bool is_portrait = theme_is_portrait(theme);
     TextStyle style = {.font = theme->fonts.small, .color = theme->colors.text_tertiary};
     char detail[STATUS_CAPACITY];
@@ -827,7 +850,7 @@ static void draw_badge(const NowPlayingScreen *now_playing, Canvas *canvas)
     if (!is_portrait && !current_cover(now_playing, &cover)) {
         return;
     }
-    int cover_size = is_portrait ? PORTRAIT_COVER_SIZE : COVER_FULL_SIZE;
+    int cover_size = is_portrait ? (theme->ipod ? 184 : PORTRAIT_COVER_SIZE) : COVER_FULL_SIZE;
     int center_x = is_portrait ? theme->metrics.screen_width / 2
                                : theme->metrics.padding + cover_size / 2;
     int center_y = (is_portrait ? PORTRAIT_COVER_TOP : COVER_TOP) + cover_size / 2;
@@ -963,6 +986,22 @@ static void draw(void *context, Canvas *canvas)
 {
     const NowPlayingScreen *now_playing = context;
     const Theme *theme = now_playing->config.theme;
+    /* Keep the classic dark playback face local to this screen. Menus and
+       the shared status bar retain the silver theme, and input is unchanged. */
+    Theme playback_theme;
+    NowPlayingScreen playback;
+    if (theme->ipod) {
+        playback_theme = *theme;
+        playback_theme.colors.background = COLOR_RGB(16, 20, 27);
+        playback_theme.colors.text = COLOR_RGB(255, 255, 255);
+        playback_theme.colors.text_secondary = COLOR_RGB(193, 202, 214);
+        playback_theme.colors.text_tertiary = COLOR_RGB(153, 166, 183);
+        playback_theme.colors.divider = COLOR_RGB(75, 87, 104);
+        playback = *now_playing;
+        playback.config.theme = &playback_theme;
+        now_playing = &playback;
+        theme = &playback_theme;
+    }
     canvas_fill_rect(canvas, theme_content_area(theme), theme->colors.background);
     header_draw(canvas, theme, now_playing->screen.title);
     if (!now_playing->status.has_track) {

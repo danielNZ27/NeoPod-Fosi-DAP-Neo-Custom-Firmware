@@ -220,9 +220,42 @@ if (!choice) return;
     app_theme_apply(0);
 }
 
+static void ipod_theme_is_selectable_and_keeps_the_neopod_accent(void)
+{
+    fake_hal_reset();
+    SettingsStore store = {.settings = settings_defaults()};
+    store.settings.button_color = 3;
+    static FixtureLibrary fixture;
+    Player player;
+    player_init(&player, fixture_library_open(&fixture));
+    app_theme_select(0, 3);
+    Color accent = APP_THEME.colors.selection_background;
+    SettingsScreens screens;
+    settings_screens_init(&screens, (SettingsContext){.store = &store, .player = &player}, &APP_THEME);
+    const MenuItem *item = find_item(&screens, "Theme");
+    CHECK(item != NULL);
+    if (!item) return;
+    Screen *choice = item->select(item->context).target;
+    choice->enter(choice->context, 0);
+    choice->handle_key(choice->context, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, 10);
+    choice->handle_key(choice->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 20);
+    CHECK(APP_THEME.ipod);
+    CHECK_EQUAL(1, store.settings.theme);
+    SettingsStore restored;
+    settings_store_load(&restored);
+    CHECK_EQUAL(1, restored.settings.theme);
+    CHECK_EQUAL(3, restored.settings.button_color);
+    app_theme_select(0, restored.settings.button_color);
+    CHECK(!APP_THEME.ipod);
+    CHECK_EQUAL(accent, APP_THEME.colors.selection_background);
+    CHECK_EQUAL(DEFAULT_THEME.colors.background, APP_THEME.colors.background);
+    app_theme_select(0, 0);
+}
+
 int main(int argc, char **argv)
 {
     const TestCase cases[] = {
+        TEST_CASE(ipod_theme_is_selectable_and_keeps_the_neopod_accent),
         TEST_CASE(side_buttons_setting_offers_three_modes_and_saves_hybrid),
         TEST_CASE(button_colour_picker_applies_immediately_and_saves),
         TEST_CASE(presets_and_replay_gain_survive_reload),

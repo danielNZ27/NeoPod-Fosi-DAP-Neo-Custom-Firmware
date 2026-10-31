@@ -4,6 +4,7 @@
 
 #include "app_internal.h"
 #include "app_screens.h"
+#include "boot_image.h"
 #include "card_files.h"
 #include "core/deadline.h"
 #include "core/key_tracker.h"
@@ -494,9 +495,12 @@ static bool draw_running_fade(Canvas *canvas)
         return true;
     }
     if (!fade_finished(&app.splash, app.now_ms)) {
-        draw_fade(canvas, &app.splash, SPLASH_TEXT);
+        if (!boot_image_draw(canvas, fade_alpha(&app.splash, app.now_ms))) {
+            draw_fade(canvas, &app.splash, SPLASH_TEXT);
+        }
         return true;
     }
+    boot_image_close();
     return false;
 }
 
@@ -719,7 +723,7 @@ void app_start(void)
     app.now_ms = now_ms;
     CardFilesReport files = card_files_prepare();
     settings_store_load(&app.settings);
-    app_theme_apply(app.settings.settings.button_color);
+    app_theme_select(app.settings.settings.theme, app.settings.settings.button_color);
     start_playback();
     start_hardware(now_ms);
     start_screens(now_ms);
@@ -880,6 +884,7 @@ void app_show_notice(const char *title, const char *message)
 
 void app_show_splash(void)
 {
+    boot_image_open();
     app.now_ms = hal_clock_milliseconds();
     fade_start(&app.splash, app.now_ms, SPLASH_TIMING);
 }

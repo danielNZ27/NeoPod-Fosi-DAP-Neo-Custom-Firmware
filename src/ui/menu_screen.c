@@ -77,6 +77,12 @@ static void update(void *context, uint32_t now_ms)
     MenuScreen *menu = context;
     menu->now_ms = now_ms;
     const MenuPanel *panel = &menu->config.panel;
+    const Theme *theme = menu->config.theme;
+    int height = theme_content_area(theme).height;
+    if (!theme->ipod && theme->metrics.screen_height > theme->metrics.screen_width && panel->width > 0) {
+        height -= 180;
+    }
+    menu->list.visible_rows = height / theme->metrics.row_height;
     if (panel->width > 0 && panel->update != NULL) {
         panel->update(panel->context, now_ms);
     }
@@ -94,7 +100,7 @@ static void draw(void *context, Canvas *canvas)
     const MenuPanel *panel = &menu->config.panel;
     Rect content = theme_content_area(theme);
     header_draw(canvas, theme, menu->config.title);
-    if (panel->width <= 0 || panel->draw == NULL) {
+    if (theme->ipod || panel->width <= 0 || panel->draw == NULL) {
         list_view_draw(&menu->list, canvas, content, menu->now_ms);
         return;
     }

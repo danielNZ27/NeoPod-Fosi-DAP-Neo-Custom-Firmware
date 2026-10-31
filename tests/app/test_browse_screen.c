@@ -2,6 +2,7 @@
 #include "check.h"
 #include "default_theme.h"
 #include "fixture_library.h"
+#include "big_library.h"
 
 static FixtureLibrary fixture;
 static BrowsePool pool;
@@ -52,9 +53,43 @@ static void album_tracks_have_no_letters(void)
     CHECK(opened(tracks)->model.section == NULL);
 }
 
+static void portrait_lists_cache_all_twelve_rows_while_scrolling(void)
+{
+    BigLibrary big = {0};
+    const Library *library = big_library_open(&big, 32, 1);
+    const BrowseKind kinds[] = {BROWSE_ALL_SONGS, BROWSE_FOLDER, BROWSE_ALBUMS, BROWSE_ARTISTS};
+    for (uint8_t theme = 0; theme < 2; theme++) {
+        app_theme_select(theme, 0);
+        for (size_t kind = 0; kind < sizeof kinds / sizeof kinds[0]; kind++) {
+            browse_pool_init(&pool, (BrowsePoolConfig){.library = library, .theme = &APP_THEME});
+            Screen *screen = browse_pool_open(&pool, 0, browse_root_query(kinds[kind]));
+            screen->enter(screen->context, 0);
+            BrowseScreen *browse = screen->context;
+            CHECK_EQUAL(12, browse->list.visible_rows);
+            CHECK(browse->count >= 12);
+            for (int selected = 0; selected < (int)browse->count; selected++) {
+                screen->update(screen->context, (uint32_t)selected);
+                for (int row = 0; row < 12 && browse->list.top + row < (int)browse->count; row++) {
+                    const char *label = browse->model.label(browse->model.context, browse->list.top + row);
+                    CHECK(label[0] != '\0');
+                }
+                CHECK(browse->list.selected >= browse->list.top);
+                CHECK(browse->list.selected < browse->list.top + 12);
+                if (selected + 1 < (int)browse->count) {
+                    screen->handle_key(screen->context,
+                        (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, (uint32_t)selected + 1);
+                }
+            }
+        }
+    }
+    app_theme_select(0, 0);
+    big_library_close(&big);
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
+        TEST_CASE(portrait_lists_cache_all_twelve_rows_while_scrolling),
         TEST_CASE(albums_are_lettered_by_their_sort_key),
         TEST_CASE(lettered_lists_never_go_backwards),
         TEST_CASE(album_tracks_have_no_letters),

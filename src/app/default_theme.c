@@ -6,6 +6,13 @@
 
 Theme APP_THEME;
 
+void app_theme_select(uint8_t theme, uint8_t color)
+{
+    APP_THEME = DEFAULT_THEME;
+    APP_THEME.ipod = theme == 1;
+    app_theme_apply(color);
+}
+
 void app_theme_apply(uint8_t color)
 {
     static const Color COLORS[BUTTON_COLOR_COUNT] = {
@@ -13,7 +20,31 @@ void app_theme_apply(uint8_t color)
         COLOR_RGB(115, 54, 201), COLOR_RGB(173, 40, 113), COLOR_RGB(181, 44, 54),
         COLOR_RGB(175, 79, 17), COLOR_RGB(138, 105, 11), COLOR_RGB(90, 102, 115)
     };
+    bool ipod = APP_THEME.ipod;
     APP_THEME = DEFAULT_THEME;
+    if (ipod) {
+        APP_THEME.ipod = true;
+        APP_THEME.colors = (ThemeColors){
+            .background = COLOR_RGB(247, 248, 250),
+            .text = COLOR_RGB(16, 22, 28),
+            .text_secondary = COLOR_RGB(68, 76, 86),
+            .text_tertiary = COLOR_RGB(94, 102, 112),
+            .selection_background = COLOR_RGB(0, 112, 207),
+            .selection_top = COLOR_RGB(63, 189, 249),
+            .selection_shine = COLOR_RGB(141, 220, 255),
+            .selection_text = COLOR_RGB(255, 255, 255),
+            .header_background = COLOR_RGB(159, 168, 179),
+            .header_top = COLOR_RGB(246, 248, 251),
+            .header_text = COLOR_RGB(29, 37, 47),
+            .divider = COLOR_RGB(173, 181, 191),
+            .scrollbar_thumb = COLOR_RGB(114, 131, 151),
+            .danger = COLOR_RGB(194, 37, 33),
+            .success = COLOR_RGB(39, 149, 72),
+            .chevron = COLOR_RGB(95, 109, 128),
+        };
+        APP_THEME.fonts.body = &FONT_INTER_SEMIBOLD_16;
+        return;
+    }
     if (color == 0 || color >= BUTTON_COLOR_COUNT) return;
     Color base = COLORS[color];
     APP_THEME.colors.selection_background = base;

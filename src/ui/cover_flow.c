@@ -4,7 +4,8 @@
 
 enum {
     TIME_CONSTANT_MS = 70,
-    MIN_UNITS_PER_MS = 1
+    MIN_UNITS_PER_MS = 1,
+    MAX_ANIMATION_STEP_MS = 24
 };
 
 typedef struct CoverShape {
@@ -82,6 +83,11 @@ QuadLight cover_flow_light(const CoverFlowLayout *layout, int32_t relative)
 
 int32_t cover_flow_approach(int32_t position, int32_t target, uint32_t elapsed_ms)
 {
+    /* Storage reads and display transfers can stall a frame. Keep those stalls
+       from consuming the entire transition and snapping to the next album. */
+    if (elapsed_ms > MAX_ANIMATION_STEP_MS) {
+        elapsed_ms = MAX_ANIMATION_STEP_MS;
+    }
     int32_t difference = target - position;
     int32_t distance = abs_of(difference);
     int32_t step = (int32_t)((int64_t)distance * elapsed_ms / TIME_CONSTANT_MS);

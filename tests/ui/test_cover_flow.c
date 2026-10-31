@@ -132,6 +132,14 @@ static void no_time_means_no_movement(void)
     CHECK_EQUAL(ONE, cover_flow_approach(ONE, 4 * ONE, 0));
 }
 
+static void a_slow_frame_preserves_the_transition(void)
+{
+    int32_t next = cover_flow_approach(0, ONE, 250);
+    CHECK(next > 0 && next < ONE / 2);
+    CHECK_EQUAL(next, cover_flow_approach(0, ONE, 24));
+    CHECK_EQUAL(ONE - next, cover_flow_approach(ONE, 0, 250));
+}
+
 static void covers_are_drawn_from_the_edges_in(void)
 {
     int order[COVER_FLOW_MAX_VISIBLE];
@@ -167,6 +175,7 @@ int main(void)
         TEST_CASE(the_position_never_overshoots_and_arrives),
         TEST_CASE(the_position_also_moves_back),
         TEST_CASE(no_time_means_no_movement),
+        TEST_CASE(a_slow_frame_preserves_the_transition),
         TEST_CASE(covers_are_drawn_from_the_edges_in),
         TEST_CASE(only_existing_albums_are_drawn),
     };

@@ -451,3 +451,5 @@ foreach(audio_test aac_probe aac_decoder opus_probe opus_decoder)
 endforeach()
 echo_add_unit_test(NAME test_audio_settings SOURCES app/test_audio_settings.c app/fake_hal.c
     LIBRARIES echo_app echo_library_fixtures PRIVATE_INCLUDES ${PROJECT_SOURCE_DIR}/src/app)
+echo_add_unit_test(NAME test_boot_image SOURCES app/test_boot_image.c app/fake_hal.c
+    LIBRARIES echo_app echo_library_fixtures PRIVATE_INCLUDES ${PROJECT_SOURCE_DIR}/src/app)

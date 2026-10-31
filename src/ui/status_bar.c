@@ -16,7 +16,7 @@ enum {
 
 static int icon_top(const Theme *theme)
 {
-    return (theme->metrics.header_height - theme->metrics.status_icon_size) / 2;
+    return (theme->metrics.header_height - theme->metrics.status_icon_size) / 2 + 1;
 }
 
 static int nub_width(int size)
@@ -132,6 +132,6 @@ void status_bar_draw(Canvas *canvas, const Theme *theme, StatusBarState state)
         if (state.charging) {
             icon_draw_bolt(canvas, status_bar_bolt_area(theme), theme->colors.success);
         }
-        draw_percent(canvas, theme, state.battery_percent, state.charging);
+        if (!theme->ipod) draw_percent(canvas, theme, state.battery_percent, state.charging);
     }
 }

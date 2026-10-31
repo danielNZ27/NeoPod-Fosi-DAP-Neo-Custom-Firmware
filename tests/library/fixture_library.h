@@ -11,7 +11,7 @@ enum {
     FIXTURE_GROUPS = 4,
     FIXTURE_FOLDERS = 10,
     FIXTURE_CAPACITY = 8192,
-    FIXTURE_COVERS_CAPACITY = 65536
+    FIXTURE_COVERS_CAPACITY = 128 * 1024
 };
 
 typedef struct FixtureLibrary {

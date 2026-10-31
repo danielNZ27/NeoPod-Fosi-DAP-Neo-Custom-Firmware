@@ -250,6 +250,32 @@ void image_draw_quad_lit(Canvas *canvas, Image image, Quad quad, QuadLight light
     }
 }
 
+void image_draw_quad_lit_fast(Canvas *canvas, Image image, Quad quad, QuadLight light)
+{
+    int first = 0;
+    int last = 0;
+    if (image.width <= 0 || image.height <= 0 || !quad_visible(canvas, quad, &first, &last)) {
+        return;
+    }
+    for (int x = first; x < last; x++) {
+        Column column = column_at(quad, x);
+        int top = max_of(column.top, canvas->clip.y);
+        int bottom = min_of(column.top + column.height, canvas->clip.y + canvas->clip.height);
+        if (column.height <= 0 || top >= bottom) {
+            continue;
+        }
+        Sampler sampler = sampler_at(&column, &image, quad.width, top - column.top);
+        unsigned level = light_at(light, column, quad.width);
+        Color *target = pixel_address(canvas, x, top);
+        for (int y = top; y < bottom; y++) {
+            Color pixel = sampler.column[(int)(sampler.position >> STEP_SHIFT) * image.width];
+            *target = level >= COLOR_LIGHT_FULL ? pixel : color_scale(pixel, level);
+            target += canvas->bounds.width;
+            sampler.position += sampler.step;
+        }
+    }
+}
+
 void image_draw_reflection(Canvas *canvas, Image image, Quad quad, QuadLight light, int rows)
 {
     int first = 0;

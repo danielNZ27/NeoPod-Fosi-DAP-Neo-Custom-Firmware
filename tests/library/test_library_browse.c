@@ -178,7 +178,7 @@ static void items_show_names_years_and_durations(void)
     CHECK(detail_is(library, artists, item_at(library, artists, BJORK), ""));
     CHECK(label_is(library, albums, item_at(library, albums, BEST_OF), "The Best of Something"));
     CHECK(detail_is(library, albums, item_at(library, albums, BEST_OF), "2001"));
-    CHECK(label_is(library, songs, item_at(library, songs, 1), "Hells Bells"));
+    CHECK(label_is(library, songs, item_at(library, songs, 1), "Hells Bells - AC/DC"));
     CHECK(detail_is(library, songs, item_at(library, songs, 1), "1:00"));
 }
 

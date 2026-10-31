@@ -309,9 +309,21 @@ static void a_reflection_stays_inside_the_clip(void)
     CHECK_EQUAL(0x3000, canvas_pixel_at(&canvas, 3, 4));
 }
 
+static void fast_artwork_scales_and_lights_inside_a_strip(void)
+{
+    Canvas canvas = make_canvas((Rect){0, 2, WIDTH, 3});
+    image_draw_quad_lit_fast(&canvas, TWO_BY_TWO, flat(3, 0, 4, 4),
+                             (QuadLight){COLOR_LIGHT_FULL / 2, COLOR_LIGHT_FULL / 2});
+    CHECK_EQUAL(color_scale(0x3000, COLOR_LIGHT_FULL / 2), canvas_pixel_at(&canvas, 3, 2));
+    CHECK_EQUAL(color_scale(0x4000, COLOR_LIGHT_FULL / 2), canvas_pixel_at(&canvas, 6, 3));
+    CHECK_EQUAL(BACKGROUND, canvas_pixel_at(&canvas, 2, 2));
+    CHECK_EQUAL(BACKGROUND, canvas_pixel_at(&canvas, 3, 4));
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
+        TEST_CASE(fast_artwork_scales_and_lights_inside_a_strip),
         TEST_CASE(an_image_at_its_own_size_is_copied),
         TEST_CASE(a_larger_quad_scales_the_image_up),
         TEST_CASE(a_slanted_quad_shrinks_toward_its_far_edge),

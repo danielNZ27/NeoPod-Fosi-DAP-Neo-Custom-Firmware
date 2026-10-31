@@ -1,5 +1,6 @@
 add_library(echo_app STATIC
     app.c
+    boot_image.c
     card_files.c
     app_screens.c
     browse_screen.c

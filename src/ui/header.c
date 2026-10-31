@@ -3,7 +3,8 @@
 #include "ui/label.h"
 
 enum {
-    DIVIDER_HEIGHT = 1
+    DIVIDER_HEIGHT = 1,
+    TITLE_OFFSET_Y = 2
 };
 
 void header_draw(Canvas *canvas, const Theme *theme, const char *title)
@@ -19,5 +20,8 @@ void header_draw(Canvas *canvas, const Theme *theme, const char *title)
     canvas_fill_gradient(canvas, body, theme->colors.header_top, theme->colors.header_background);
     canvas_fill_rect(canvas, divider, theme->colors.divider);
     Rect title_area = label_centered_area(style.font, title_bounds, title);
-    label_draw(canvas, style, (Label){.area = title_area, .text = title});
+    /* Centre the visible letterforms rather than the font's line box. */
+    title_area.y += TITLE_OFFSET_Y;
+    Canvas clipped = canvas_clipped(canvas, body);
+    label_draw(&clipped, style, (Label){.area = title_area, .text = title});
 }

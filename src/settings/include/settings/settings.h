@@ -54,6 +54,7 @@ enum {
     EQ_USER_PRESET_NAME_MAX = 15,
     EQ_USER_PRESET_CAPACITY = 8,
     BUTTON_COLOR_COUNT = 9,
+    THEME_COUNT = 2,
     SIDE_BUTTONS_COUNT = SIDE_BUTTONS_HYBRID + 1,
     SETTINGS_FILE_SIZE = 256,
     SETTINGS_LEGACY_FILE_SIZE = 24
@@ -85,6 +86,7 @@ typedef struct Settings {
     ReplayGainMode replay_gain_mode;
     uint8_t button_color;
     SideButtons side_buttons;
+    uint8_t theme;
 } Settings;
 
 Settings settings_defaults(void);

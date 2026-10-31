@@ -287,7 +287,23 @@ static bool track_label(const Library *library, BrowseQuery query, LibraryTrack 
                         BrowseText text)
 {
     if (query.kind != BROWSE_FOLDER) {
-        return library_read_string(library, track.title, text.label, text.label_capacity);
+        if (!library_read_string(library, track.title, text.label, text.label_capacity)) {
+            return false;
+        }
+        if (query.kind == BROWSE_ALL_SONGS) {
+            LibraryGroup group;
+            char artist[128];
+            if (library_read_group(library, LIBRARY_ARTISTS, track.artist, &group) &&
+                library_read_string(library, group.name, artist, sizeof artist) && artist[0] != '\0') {
+                StringBuilder builder = {.buffer = text.label, .capacity = text.label_capacity};
+                while (text.label[builder.length] != '\0') builder.length++;
+                if (builder.length + 4 < builder.capacity) {
+                    string_builder_append(&builder, " - ");
+                    string_builder_append(&builder, artist);
+                }
+            }
+        }
+        return true;
     }
     char path[PATH_CAPACITY];
     if (!library_read_string(library, track.path, path, sizeof path)) {

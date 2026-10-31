@@ -98,7 +98,7 @@ static void the_usb_mode_and_dac_volume_are_saved_at_bytes_fifteen_and_sixteen(v
     Settings settings = custom_settings();
     uint8_t bytes[SETTINGS_FILE_SIZE];
     settings_encode(&settings, bytes);
-    CHECK_EQUAL(7, bytes[VERSION_FIELD]);
+    CHECK_EQUAL(8, bytes[VERSION_FIELD]);
     CHECK_EQUAL(USB_MODE_DAC, bytes[USB_MODE_FIELD]);
     CHECK_EQUAL(37, bytes[DAC_VOLUME_FIELD]);
 }
@@ -142,7 +142,7 @@ static void a_newer_version_is_rejected(void)
     Settings settings = custom_settings();
     uint8_t bytes[SETTINGS_FILE_SIZE];
     settings_encode(&settings, bytes);
-    bytes[VERSION_FIELD] = 8;
+    bytes[VERSION_FIELD] = 9;
     rewrite_checksum(bytes);
     CHECK(!settings_decode(bytes, sizeof bytes, &settings));
 }
@@ -243,9 +243,30 @@ static void side_button_mode_is_saved_validated_and_defaults_for_legacy_files(vo
     CHECK_EQUAL(SIDE_BUTTONS_VOLUME, restored.side_buttons);
 }
 
+static void theme_is_saved_validated_and_defaults_for_older_settings(void)
+{
+    Settings settings = custom_settings();
+    settings.theme = 1;
+    uint8_t bytes[SETTINGS_FILE_SIZE];
+    settings_encode(&settings, bytes);
+    Settings restored;
+    CHECK(settings_decode(bytes, sizeof bytes, &restored));
+    CHECK_EQUAL(1, restored.theme);
+    CHECK_EQUAL(settings.volume, restored.volume);
+    bytes[220] = THEME_COUNT;
+    rewrite_checksum(bytes);
+    CHECK(!settings_decode(bytes, sizeof bytes, &restored));
+    bytes[VERSION_FIELD] = 7;
+    rewrite_checksum(bytes);
+    CHECK(settings_decode(bytes, sizeof bytes, &restored));
+    CHECK_EQUAL(0, restored.theme);
+    CHECK_EQUAL(settings.button_color, restored.button_color);
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
+        TEST_CASE(theme_is_saved_validated_and_defaults_for_older_settings),
         TEST_CASE(side_button_mode_is_saved_validated_and_defaults_for_legacy_files),
         TEST_CASE(button_colour_round_trips_and_legacy_files_keep_blue),
         TEST_CASE(defaults_are_comfortable),

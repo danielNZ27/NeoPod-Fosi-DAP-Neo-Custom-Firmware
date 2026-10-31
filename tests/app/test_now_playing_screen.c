@@ -363,9 +363,23 @@ static void render_preview(const char *path, int mode)
     fclose(out);
 }
 
+static void the_ipod_theme_keeps_seek_controls(void)
+{
+    select_seek_bar();
+    portrait.ipod = true;
+    screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 20);
+    CHECK(playing_screen.scrubbing);
+    screen->handle_key(screen->context, (KeyEvent){KEY_WHEEL_DOWN, KEY_GESTURE_PRESS}, 30);
+    CHECK_EQUAL(15000u, playing_screen.scrub_position_ms);
+    screen->handle_key(screen->context, (KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, 40);
+    CHECK(!playing_screen.scrubbing);
+    CHECK_EQUAL(1, fake_hal_audio_seek_count());
+}
+
 int main(int argc, char **argv)
 {
     static const TestCase cases[] = {
+        TEST_CASE(the_ipod_theme_keeps_seek_controls),
         TEST_CASE(controls_remain_visible_for_four_seconds_after_movement),
         TEST_CASE(volume_is_followed_by_mode_then_seek_and_four_modes_cycle),
         TEST_CASE(wheel_selects_seek_and_ok_commits_only_the_preview),

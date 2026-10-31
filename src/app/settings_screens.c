@@ -19,10 +19,12 @@ enum {
     CHOICE_REPLAY_GAIN = 9,
     CHOICE_USB_MODE = 10,
     CHOICE_COLOR = 11,
-    CHOICE_SIDE_BUTTONS = 12
+    CHOICE_SIDE_BUTTONS = 12,
+    CHOICE_THEME = 13
 };
 
 static const char *const SHUFFLE_OPTIONS[SHUFFLE_MODE_COUNT] = {"Off", "Songs", "Albums"};
+static const char *const THEME_OPTIONS[THEME_COUNT] = {"NeoPod", "iPod Classic"};
 static const char *const REPEAT_OPTIONS[REPEAT_MODE_COUNT] = {"Off", "One", "All"};
 static const char *const COLOR_OPTIONS[BUTTON_COLOR_COUNT] = {
     "Blue", "Green", "Teal", "Purple", "Pink", "Red", "Orange", "Gold", "Silver"
@@ -262,6 +264,19 @@ static int current_side_buttons(const void *context)
     return (int)settings_of(context)->side_buttons;
 }
 
+static int current_theme(const void *context)
+{
+    return settings_of(context)->theme;
+}
+
+static void choose_theme(void *context, int index)
+{
+    SettingsContext *settings = context;
+    editable_settings(context)->theme = (uint8_t)index;
+    app_theme_select((uint8_t)index, settings_of(context)->button_color);
+    save(settings);
+}
+
 static void choose_side_buttons(void *context, int index)
 {
     editable_settings(context)->side_buttons = (SideButtons)index;
@@ -269,6 +284,7 @@ static void choose_side_buttons(void *context, int index)
 }
 
 static const SettingChoice CHOICES[SETTINGS_CHOICE_COUNT] = {
+    [CHOICE_THEME] = {"Theme", THEME_OPTIONS, THEME_COUNT, current_theme, choose_theme, NULL},
     [CHOICE_SHUFFLE] = {"Shuffle", SHUFFLE_OPTIONS, SHUFFLE_MODE_COUNT, current_shuffle, choose_shuffle, NULL},
     [CHOICE_REPEAT] = {"Repeat", REPEAT_OPTIONS, REPEAT_MODE_COUNT, current_repeat, choose_repeat, NULL},
     [CHOICE_SLEEP] = {"Sleep timer", SLEEP_OPTIONS, SLEEP_TIMER_OPTION_COUNT, current_sleep, choose_sleep, NULL},
@@ -378,6 +394,7 @@ Screen *settings_screens_init(SettingsScreens *screens, SettingsContext context,
     screens->display_items[2] = make_choice_item(screens, CHOICE_COLOR);
     screens->display_items[3] = make_choice_item(screens, CHOICE_SIDE_BUTTONS);
     screens->display_items[4] = make_choice_item(screens, CHOICE_START);
+    screens->display_items[5] = make_choice_item(screens, CHOICE_THEME);
     menu_screen_init(&screens->display_menu, (MenuConfig){
         .title = "Display & Controls",
         .items = screens->display_items,

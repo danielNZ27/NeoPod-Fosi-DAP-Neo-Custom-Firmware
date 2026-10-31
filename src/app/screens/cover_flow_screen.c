@@ -320,7 +320,11 @@ static void draw_cover(const CoverFlowScreen *flow, Canvas *canvas, int position
     Image image;
     if (cover_image(flow, position, &image)) {
         uint32_t started_us = hal_clock_microseconds();
-        image_draw_quad_lit(canvas, image, quad, light);
+        if (flow->position != (int32_t)flow->target * COVER_FLOW_ONE) {
+            image_draw_quad_lit_fast(canvas, image, quad, light);
+        } else {
+            image_draw_quad_lit(canvas, image, quad, light);
+        }
         uint32_t reflection_us = hal_clock_microseconds();
         draw_profile_add(DRAW_PART_COVERS, reflection_us - started_us);
         QuadLight reflected = {(uint16_t)(light.left * REFLECTION_LIGHT / COLOR_LIGHT_FULL),
@@ -356,6 +360,10 @@ static void draw_text(const CoverFlowScreen *flow, Canvas *canvas)
     int artist_top = is_portrait ? PORTRAIT_ARTIST_TOP : ARTIST_TOP;
     TextStyle title = {.font = theme->fonts.title, .color = theme->colors.text};
     TextStyle artist = {.font = theme->fonts.body, .color = theme->colors.text_secondary};
+    if (theme->ipod) {
+        title.color = COLOR_RGB(255, 255, 255);
+        artist.color = COLOR_RGB(193, 202, 214);
+    }
     draw_line(flow, canvas, (Label){{padding, title_top, width, LINE_HEIGHT}, flow->title}, title);
     draw_line(flow, canvas, (Label){{padding, artist_top, width, LINE_HEIGHT}, flow->artist},
               artist);
@@ -364,6 +372,7 @@ static void draw_text(const CoverFlowScreen *flow, Canvas *canvas)
 static void draw_empty(const Theme *theme, Canvas *canvas)
 {
     TextStyle style = {.font = theme->fonts.body, .color = theme->colors.text_secondary};
+    if (theme->ipod) style.color = COLOR_RGB(193, 202, 214);
     Rect screen = {0, 0, theme->metrics.screen_width, theme->metrics.screen_height};
     label_draw(canvas, style,
                (Label){label_centered_area(style.font, screen, EMPTY_MESSAGE), EMPTY_MESSAGE});

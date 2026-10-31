@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.6.2 — 2026-10-31
+
+Firmware image: `DP3_V162.IMG`. See [release notes](release/RELEASE-v1.6.2.md) for details and upgrade instructions.
+
+- Added a separate **iPod Classic** theme under Settings → Display & Controls → Theme, with silver headers, white menus, blue highlights and a full-height home menu.
+- Added dark classic Now Playing with larger 184 × 184 artwork and blue progress, retaining NeoPod's playback, volume, shuffle/repeat and seek controls. Theme selection persists; the original theme and button colour remain available.
+- Replaced the text boot splash with full-screen 240 × 320 artwork loaded from `/.echo/boot.rgb565`, fading from black using the existing strip buffer. Missing or invalid artwork falls back to text. Added the artwork converter and packaging step.
+- Improved Cover Flow rendering speed during motion and capped animation time steps to prevent slow frames from snapping through transitions; smoothing returns at rest. Preserved readable text in the light theme.
+- Corrected header alignment in both themes: titles down two pixels; playback/battery/charging/percentage indicators down one pixel from their original positions.
+- Fixed the eight-label/twelve-row browser cache mismatch. Folders, All Songs, Albums and Artists now populate all twelve visible rows.
+- Added **Song name - Artist** labels to All Songs, with horizontal scrolling for long selected entries after the existing pause.
+- Corrected device version reporting to v1.6.2, updated the image version/build date, and expanded the code allocation within the stock module limits.
+- Added regression coverage for the new UI behaviour and refreshed the cover fixture to the current artwork dimensions.
+
+**Upgrade:** flash `DP3_V162.IMG` and merge the matching `sd-card/.echo` files, including `boot.rgb565` and `neo_scan.bin`, into the SD card. Preserve existing settings, library and covers; no rescan is required from v1.6.1.
+
 ## v1.6.1 — 2026-10-31
 
 Firmware image: DP3_V161.IMG. This release brings high-quality album artwork scaling with real-time bilinear interpolation, Floyd-Steinberg dithering, and a 5-category Settings menu.
