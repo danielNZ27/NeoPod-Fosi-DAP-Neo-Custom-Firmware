@@ -5,8 +5,6 @@
 
 **NeoPod** is an open-source custom firmware for the **Fosi Audio DAP Neo** digital audio player. It brings a clean, retro iPod-style interface, smooth navigation, album artwork support, Bluetooth audio with saved devices and automatic reconnect, and bit-perfect wired playback powered by a dual-core audio architecture.
 
-**Production v1.8.0:** [Download the complete Windows/Python update package](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/raw/refs/heads/main/release/NeoPod-v1.8.0.zip) · [Release notes](release/RELEASE-v1.8.0.md). Applies the owner-confirmed wired-jack pull-bit fix automatically; diagnostic mode is off.
-
 ---
 
 > [!CAUTION]
