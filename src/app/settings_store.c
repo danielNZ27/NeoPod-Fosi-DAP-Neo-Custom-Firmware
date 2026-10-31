@@ -9,7 +9,12 @@ const char SETTINGS_STORE_PATH[] = "/.echo/settings.bin";
 
 static const HalAudioGain HAL_GAINS[GAIN_LEVEL_COUNT] = {HAL_AUDIO_GAIN_LOW, HAL_AUDIO_GAIN_HIGH};
 static const HalAudioOutput HAL_OUTPUTS[OUTPUT_JACK_COUNT] = {
-    HAL_AUDIO_OUTPUT_AUTO, HAL_AUDIO_OUTPUT_SINGLE_ENDED, HAL_AUDIO_OUTPUT_BALANCED};
+    HAL_AUDIO_OUTPUT_AUTO, HAL_AUDIO_OUTPUT_SINGLE_ENDED,
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    HAL_AUDIO_OUTPUT_SINGLE_ENDED};
+#else
+    HAL_AUDIO_OUTPUT_BALANCED};
+#endif
 static const HalUsbMode HAL_USB_MODES[USB_MODE_COUNT] = {HAL_USB_MODE_STORAGE, HAL_USB_MODE_DAC};
 
 static bool read_settings(uint8_t *bytes)
@@ -49,6 +54,10 @@ void settings_store_load(SettingsStore *store)
     store->has_saved = false;
     if (read_settings(bytes) && settings_decode(bytes, sizeof bytes, &store->settings)) {
         remember(store, bytes);
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+        if (store->settings.output == OUTPUT_BALANCED)
+            store->settings.output = OUTPUT_SINGLE_ENDED;
+#endif
         return;
     }
     store->settings = settings_defaults();

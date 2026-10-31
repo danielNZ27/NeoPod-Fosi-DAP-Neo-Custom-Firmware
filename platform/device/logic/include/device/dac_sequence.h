@@ -39,6 +39,8 @@ enum {
 
 void dac_power_pins(const DacBus *bus);
 bool dac_probe(const DacBus *bus);
+bool dac_headphone_detect_read(const DacBus *bus, uint8_t address,
+                               uint8_t *control, uint8_t *status);
 DacResult dac_configure(const DacBus *bus, uint8_t rate_byte);
 void dac_output_on(const DacBus *bus, uint8_t volume);
 void dac_output_off(const DacBus *bus);

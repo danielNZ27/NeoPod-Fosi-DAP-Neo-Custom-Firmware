@@ -1,5 +1,75 @@
 # Changelog
 
+## v1.8.0 — 2026-11-01
+
+Firmware image: `DP3_V180.IMG`. Production package: `NeoPod-v1.8.0.zip`.
+
+- Apply GPIO0.13 pull register bit **1** automatically on every boot. The owner confirmed this setting resolves wired headphone removal/reinsertion on the v1.7.9 diagnostic build. Bit 0 produced an unstable unplugged signal and repeated pause/resume. Keep the existing 150 ms removal / 1.2 s insertion filter and preserve manual pause.
+- Build production firmware with `ECHO_RELEASE=ON` and `ECHO_JACK_DIAGNOSTICS=OFF`. No Diagnostics home entry, interactive pull-bit control, transition counters or experimental DAC detector runs in the release. Bluetooth handling is retained.
+- Ship both the Python CLI and the standalone Windows GUI EXE. The three-page updater validates matching firmware/companions, shows a passive red/green recovery indicator, keeps the activity log visible, tries normal reset (0) first, and offers safe ejection.
+- Retain the local v1.7.1–v1.7.5 improvements: library Stats, confirmed Bluetooth link indication, status-bar Bluetooth icon, 3.5 mm-only output settings, and automatic pause/resume.
+- Generate firmware and helper manifests, verify the package with the shipped flash engine, and package all six `.echo` companions in the ZIP.
+
+**Upgrade:** extract the complete ZIP, enter recovery manually, and use `flash-neo.exe` or `python flash-neo.py DP3_V180.IMG`. Settings, library, artwork and Bluetooth records are preserved; no rescan is needed.
+
+**Hardware evidence:** pull bit 1 was confirmed by the owner on the diagnostic build. Production uses that same setting with diagnostic instrumentation disabled. The earlier description of bit 0 as a disabled pull was not established; use register-bit terminology.
+
+## v1.7.5 — 2026-11-01
+
+Firmware image: `DP3_V175.IMG`.
+
+- Match stock Neo GPIO0.13 input configuration by explicitly disabling its internal pull resistor. Replace the short sample-count filter on Neo with time-based debounce: 150 ms continuous removal and 1,200 ms continuous insertion. A return to the stable state cancels the candidate transition, so brief false insertions cannot immediately auto-resume music.
+- Remove the 4.4 mm output choice on Neo; only Auto and 3.5 mm remain. Migrate old balanced settings to 3.5 mm and force the Neo DAC to its 3.5 mm volume profile. Preserve the settings-file format for compatibility.
+- Replace the unused balanced-jack diagnostics row with the debounced Headphones status. Neo has one 3.5 mm headphone jack.
+- Keep Bluetooth pairing, link confirmation and auto pause/resume behavior unchanged.
+- Added tests for repeated noisy insertion pulses, clock wrap, actual-board pull configuration, stable replug and legacy output-settings migration.
+
+**Upgrade:** run the included helper against `DP3_V175.IMG`. It copies the matching companion files after reboot. Wired electrical behavior still requires hardware confirmation.
+
+## v1.7.4 — 2026-11-01
+
+Firmware image: `DP3_V174.IMG`.
+
+- Fixed Neo wired-jack detection: the unused active-low balanced detect input is now held logically inactive, instead of always reporting balanced headphones. GPIO0.13 once again determines wired insertion/removal, allowing v1.7.3 automatic pause/resume to receive real events. GPIO2.8 remains reserved for DAC mute.
+- Added a host regression test compiling the actual Neo board jack adapter with simulated GPIO transitions and debounce. Bluetooth connection and pause/resume logic is unchanged.
+- Updated the Windows flash helper to wait at completion: Press Enter to safely eject DAP Neo, or close the window to leave it mounted. Enter requests Windows safe removal of the identified USB parent, covering both drives; a Windows veto is reported without claiming it is safe to unplug. `--no-eject-prompt` supports unattended completion.
+- The owner confirmed the updated reset/companion-copy workflow completed on hardware.
+
+**Upgrade:** run the included `flash-neo.py` against `DP3_V174.IMG`; it installs the matching `.echo` companions after reboot. Preserve settings, library and saved devices. No rescan is required.
+
+## v1.7.3 — 2026-11-01
+
+Firmware image: `DP3_V173.IMG`.
+
+- Pause active music when wired headphones are unplugged or a confirmed Bluetooth connection is lost. Resume an automatically paused session when wired headphones are inserted again or Bluetooth reconnects and its audio stream is ready.
+- Preserve manual pause: connecting headphones alone never starts music that was already paused. Manual playback controls cancel pending automatic resume.
+- Ignore wired jack changes while Bluetooth is connected, and preserve playback position across automatic pause/resume. The resume marker is session-only and cleared when the output is released.
+- Retains v1.7.2 Bluetooth status confirmation, Stats without free storage, and the top-bar Bluetooth icon.
+
+**Upgrade:** flash `DP3_V173.IMG` and replace `.echo/neo_scan.bin` from the matching build. Preserve settings, saved devices, library and artwork. No rescan is required.
+
+## v1.7.2 — 2026-10-31
+
+Firmware image: `DP3_V172.IMG`.
+
+- Fixed false Connected/disconnected cycling during saved-device reconnect attempts. CH/CHOK command acknowledgements now trigger a status query; only a complete CQO/CQo connected report confirms the link. Keep the Connecting state and timeout while waiting for confirmation, with periodic status polling after acknowledgement. Audio routing and the solid Bluetooth icon wait for the confirmed link.
+- Removed free storage from Stats at the owner's request. Stats retains total songs, artists, albums, and total music hours/minutes.
+- Retained the v1.7.1 top-bar Bluetooth icon: hidden when Off, flashing while disconnected, solid when connected.
+- Added regression tests for repeated acknowledgements with headphones off, timeout, late notices, and successful connection once headphones become available.
+
+**Upgrade:** flash `DP3_V172.IMG` and replace `.echo/neo_scan.bin` with the matching file. Preserve settings, saved devices, library and artwork. No rescan is required.
+
+## v1.7.1 — 2026-10-31
+
+Firmware image: `DP3_V171.IMG`.
+
+- Added **Settings → System → Stats** with scanned-library song, artist and album counts, free MicroSD storage, and total indexed track duration in hours and minutes.
+- Stats refresh when opened. Library duration and FAT16/FAT32/exFAT free-space scans run in bounded steps; pending values show Calculating and read errors show Unavailable.
+- Added a Bluetooth symbol beside the playback icon in the top bar, in both themes: hidden when Bluetooth is Off, flashing every half second while On and disconnected, and solid while connected (including paused playback).
+- Retained v1.7.0 Bluetooth pairing, saved devices and playback transition behavior.
+
+**Upgrade:** flash `DP3_V171.IMG` and replace `.echo/neo_scan.bin` with its matching companion. Preserve settings, Bluetooth devices, library and artwork. No rescan is required unless the library has changed.
+
 ## v1.7.0 — 2026-10-31
 
 Firmware image: `DP3_V170.IMG`. [Release notes and upgrade instructions](release/RELEASE-v1.7.0.md).

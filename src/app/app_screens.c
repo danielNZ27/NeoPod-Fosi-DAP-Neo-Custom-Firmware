@@ -181,6 +181,9 @@ static void build_home(AppScreens *screens, AppScreensContext context)
     screens->home_items[2] = shelf_item(screens, context, SPOKEN_AUDIOBOOK);
     screens->home_items[3] = shelf_item(screens, context, SPOKEN_PODCAST);
     screens->home_items[4] = app_screens_open_item("Settings", &screens->settings.menu.screen);
+#ifdef ECHO_JACK_DIAGNOSTICS
+    screens->home_items[5] = app_screens_open_item("Diagnostics", &screens->diagnostics.screen);
+#endif
 #else
     screens->home_items[0] = app_screens_open_item("Music", &screens->music.screen);
     screens->home_items[1] = shelf_item(screens, context, SPOKEN_AUDIOBOOK);
@@ -224,7 +227,7 @@ Screen *app_screens_init(AppScreens *screens, AppScreensContext context)
     now_playing_screen_init(&screens->now_playing, now_playing);
     build_music(screens, context);
     build_settings(screens, context);
-#if !defined(ECHO_BOARD_NEO) && !defined(ECHO_NEO_SIM)
+#if (!defined(ECHO_BOARD_NEO) && !defined(ECHO_NEO_SIM)) || defined(ECHO_JACK_DIAGNOSTICS)
     diagnostics_menu_build(screens, context.options, theme);
 #endif
     build_home(screens, context);

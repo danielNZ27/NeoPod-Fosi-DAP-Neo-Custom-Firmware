@@ -693,6 +693,9 @@ void hal_audio_seek(uint32_t position_ms)
 
 static DacCurve output_curve(void)
 {
+#ifdef ECHO_BOARD_NEO
+    return DAC_CURVE_SINGLE_ENDED;
+#else
     switch (output_setting) {
     case HAL_AUDIO_OUTPUT_SINGLE_ENDED:
         return DAC_CURVE_SINGLE_ENDED;
@@ -703,6 +706,7 @@ static DacCurve output_curve(void)
     }
     return hal_audio_jack() == HAL_AUDIO_JACK_BALANCED ? DAC_CURVE_BALANCED
                                                        : DAC_CURVE_SINGLE_ENDED;
+#endif
 }
 
 static void apply_volume(void)

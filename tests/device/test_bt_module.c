@@ -390,7 +390,7 @@ static void clok_reports_paired(void)
     receive_text("CLOK", CONNECT_MS + 1000);
     settle(CONNECT_MS + 1000);
     CHECK_EQUAL(HAL_BLUETOOTH_PAIRED, module.status.pairing);
-    CHECK_EQUAL(HAL_BLUETOOTH_READY, module.status.state);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, module.status.state);
 }
 
 static void cler_and_cher_report_a_failed_pairing(void)
@@ -466,15 +466,20 @@ static void a_long_connected_name_is_cut(void)
     CHECK(strcmp("A device name that is longer th", module.status.connected.name) == 0);
 }
 
-static void chok_connects_the_picked_device(void)
+static void chok_waits_for_a_confirmed_link(void)
 {
     BtModuleFrame frame;
     found_phones();
     bt_module_connect(&module, 1, CONNECT_MS, &frame);
     receive_text("CHOK", CONNECT_MS + 1000);
-    settle(CONNECT_MS + 1000);
-    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTED, module.status.state);
+    CHECK(poll(CONNECT_MS + 1000 + BT_MODULE_SILENCE_MS, &frame));
+    CHECK(frame_is(&frame, "CQ00"));
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, module.status.state);
     CHECK_EQUAL(HAL_BLUETOOTH_PAIRED, module.status.pairing);
+    CHECK(!module.status.streaming);
+    receive_connected(SPEAKER, "Kitchen", CONNECT_MS + 1100);
+    settle(CONNECT_MS + 1100);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTED, module.status.state);
     CHECK(strcmp("Kitchen", module.status.connected.name) == 0);
 }
 
@@ -592,8 +597,13 @@ static void a_saved_device_reconnects_without_a_scan(void)
     CHECK_EQUAL(0, module.status.device_count);
     CHECK(poll(START_MS + 500 + BT_MODULE_CONNECT_RETRY_MS, &frame));
     CHECK(frame_bytes_are(&frame, expected, sizeof expected));
-    receive_text("CHOK", START_MS + 600);
-    settle(START_MS + 600);
+    uint32_t ack_ms = START_MS + 500 + BT_MODULE_CONNECT_RETRY_MS + 100;
+    receive_text("CHOK", ack_ms);
+    CHECK(poll(ack_ms + BT_MODULE_SILENCE_MS, &frame));
+    CHECK(frame_is(&frame, "CQ00"));
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, module.status.state);
+    receive_connected(saved.address, saved.name, ack_ms + 100);
+    settle(ack_ms + 100);
     CHECK_EQUAL(HAL_BLUETOOTH_CONNECTED, module.status.state);
     CHECK(strcmp(saved.name, module.status.connected.name) == 0);
 }
@@ -640,9 +650,62 @@ static void incomplete_and_unknown_status_do_not_drop_a_live_link(void)
     CHECK_EQUAL(HAL_BLUETOOTH_READY, module.status.state);
 }
 
+static void off_headphones_never_connect_on_reconnect_acknowledgements(void)
+{
+    power_on_ready();
+    BtModuleFrame frame;
+    HalBluetoothDevice saved = {{1, 2, 3, 4, 5, 6}, "Off headphones"};
+    for (uint32_t attempt = 0; attempt < 3; attempt++) {
+        uint32_t start = START_MS + 500 + attempt * 40000;
+        CHECK(bt_module_connect_device(&module, &saved, true, start, &frame));
+        receive_text("CHOK", start + 100);
+        CHECK(poll(start + 100 + BT_MODULE_SILENCE_MS, &frame));
+        CHECK(frame_is(&frame, "CQ00"));
+        CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, module.status.state);
+        CHECK(!bt_module_set_stream(&module, true, start + 200, &frame));
+        receive_text("CQI", start + 300);
+        settle(start + 300);
+        CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, module.status.state);
+        CHECK(!module.status.streaming);
+        CHECK(poll(start + 100 + BT_MODULE_SILENCE_MS + BT_MODULE_QUERY_PERIOD_MS, &frame));
+        CHECK(frame_is(&frame, "CQ00"));
+        CHECK_EQUAL(HAL_BLUETOOTH_CONNECTING, module.status.state);
+        CHECK(poll(start + BT_MODULE_CONNECT_LIMIT_MS, &frame));
+        CHECK(frame_is(&frame, "CT00"));
+        CHECK_EQUAL(HAL_BLUETOOTH_READY, module.status.state);
+    }
+    /* The same saved device still connects when it really comes online. */
+    uint32_t start = START_MS + 150000;
+    CHECK(bt_module_connect_device(&module, &saved, true, start, &frame));
+    receive_text("CHOK", start + 100);
+    settle(start + 100);
+    const uint8_t header[] = {'C', 'Q', 'o', '1', '6'};
+    receive_bytes(header, sizeof header, start + 200);
+    receive_bytes(saved.address, 6, start + 200);
+    receive_text("Headphones", start + 200);
+    settle(start + 200);
+    CHECK_EQUAL(HAL_BLUETOOTH_CONNECTED, module.status.state);
+    CHECK(bt_module_set_stream(&module, true, start + 300, &frame));
+}
+static void a_short_or_late_link_notice_does_not_fabricate_a_connection(void)
+{
+    power_on_ready();
+    BtModuleFrame frame;
+    receive_text("CHCQI", START_MS + 500);
+    settle(START_MS + 500);
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, module.status.state);
+    receive_text("CHOK", START_MS + 600);
+    CHECK(poll(START_MS + 600 + BT_MODULE_SILENCE_MS, &frame));
+    CHECK(frame_is(&frame, "CQ00"));
+    CHECK_EQUAL(HAL_BLUETOOTH_READY, module.status.state);
+    CHECK(!bt_module_set_stream(&module, true, START_MS + 700, &frame));
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
+        TEST_CASE(off_headphones_never_connect_on_reconnect_acknowledgements),
+        TEST_CASE(a_short_or_late_link_notice_does_not_fabricate_a_connection),
         TEST_CASE(a_powered_module_waits_for_its_ready_report),
         TEST_CASE(lowercase_connected_status_keeps_the_stream),
         TEST_CASE(incomplete_and_unknown_status_do_not_drop_a_live_link),
@@ -680,7 +743,7 @@ int main(void)
         TEST_CASE(a_connect_without_a_result_is_cancelled_after_thirty_seconds),
         TEST_CASE(cqo_reports_the_connected_device),
         TEST_CASE(a_long_connected_name_is_cut),
-        TEST_CASE(chok_connects_the_picked_device),
+        TEST_CASE(chok_waits_for_a_confirmed_link),
         TEST_CASE(a_connected_module_is_still_asked_for_its_status),
         TEST_CASE(another_status_letter_means_the_link_dropped),
         TEST_CASE(disconnecting_sends_ct00_and_ctok_confirms_it),

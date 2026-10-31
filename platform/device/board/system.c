@@ -35,7 +35,11 @@ static void read_tag(void)
 const char *hal_system_version(void)
 {
 #ifdef ECHO_BOARD_NEO
-    return "NeoPod v1.7.0";
+#ifdef ECHO_JACK_DIAGNOSTICS
+    return "NeoPod v1.8.0 Jack diag";
+#else
+    return "NeoPod v1.8.0";
+#endif
 #endif
     if (!tried) {
         tried = true;

@@ -34,6 +34,7 @@ typedef struct BtModule {
     bool answered;
     bool repeated;
     bool reconnecting;
+    bool verify_link;
     uint8_t play_notice;
     uint32_t stream_changed_ms;
 } BtModule;

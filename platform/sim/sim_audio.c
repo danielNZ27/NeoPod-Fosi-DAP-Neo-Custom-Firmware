@@ -343,9 +343,17 @@ HalAudioJack hal_audio_jack(void)
     return HAL_AUDIO_JACK_SINGLE_ENDED;
 }
 
+static bool simulated_jack_pull_bit;
+
 HalJackPins hal_audio_jack_pins(void)
 {
-    return (HalJackPins){.single_ended = {.high = false}, .balanced = {.high = true}};
+    return (HalJackPins){.single_ended = {.high = false}, .balanced = {.high = true},
+                         .pull_bit = simulated_jack_pull_bit};
+}
+
+void hal_audio_jack_set_pull_bit(bool bit)
+{
+    simulated_jack_pull_bit = bit;
 }
 
 HalToneResult hal_audio_test_tone(void)

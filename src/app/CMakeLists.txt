@@ -23,6 +23,7 @@ add_library(echo_app STATIC
     settings_store.c
     spoken_store.c
     screens/bluetooth_screen.c
+    screens/stats_screen.c
     screens/cover_flow_screen.c
     screens/custom_eq_screen.c
     screens/equalizer_screen.c

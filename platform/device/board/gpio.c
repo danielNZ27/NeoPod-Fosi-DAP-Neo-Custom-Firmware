@@ -30,6 +30,14 @@ bool gpio_pull_enabled(GpioPin pin)
     return (register_read(address) >> (pin.pin % GRF_MUX_PINS_PER_REGISTER) & 1u) != 0;
 }
 
+void gpio_set_pull(GpioPin pin, bool enabled)
+{
+    uint32_t address = GRF_BASE + GRF_PULL_OFFSET + GRF_MUX_PORT_STRIDE * pin.port +
+                       4u * (uint32_t)(pin.pin / GRF_MUX_PINS_PER_REGISTER);
+    uint32_t bit = 1u << (pin.pin % GRF_MUX_PINS_PER_REGISTER);
+    register_write(address, (bit << GRF_WRITE_ENABLE_SHIFT) | (enabled ? bit : 0));
+}
+
 static void set_bit(uint32_t address, uint8_t bit, bool value)
 {
     uint32_t mask = 1u << bit;
@@ -52,6 +60,11 @@ void gpio_input(GpioPin pin)
 bool gpio_read(GpioPin pin)
 {
     return (register_read(gpio_port_base(pin.port) + GPIO_INPUT_LEVEL) >> pin.pin & 1u) != 0;
+}
+
+uint32_t gpio_input_bank(uint8_t port)
+{
+    return register_read(gpio_port_base(port) + GPIO_INPUT_LEVEL);
 }
 
 uint32_t gpio_function(GpioPin pin)

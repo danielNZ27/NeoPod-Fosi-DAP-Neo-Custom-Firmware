@@ -252,9 +252,91 @@ static void ipod_theme_is_selectable_and_keeps_the_neopod_accent(void)
     app_theme_select(0, 0);
 }
 
+
+static void stats_show_library_counts_and_duration(void)
+{
+    fake_hal_reset();
+    static FixtureLibrary fixture;
+    Player player;
+    const Library *library = fixture_library_open(&fixture);
+    player_init(&player, library);
+    SettingsScreens screens;
+    settings_screens_init(&screens, (SettingsContext){.player = &player}, &DEFAULT_THEME);
+    const MenuItem *item = find_item(&screens, "Stats");
+    CHECK(item != NULL);
+    CHECK_EQUAL(SCREEN_ACTION_PUSH, item->select(item->context).type);
+    StatsScreen *stats = &screens.stats;
+    stats->screen.enter(stats, 0);
+    stats->screen.update(stats, 1);
+    CHECK(strcmp(stats->values[0], "8") == 0);
+    CHECK(strcmp(stats->values[1], "4") == 0);
+    CHECK(strcmp(stats->values[2], "5") == 0);
+    uint64_t duration = 0;
+    for (uint32_t i = 0; i < library_count(library, LIBRARY_TRACKS); i++) {
+        LibraryTrack track;
+        CHECK(library_read_track(library, i, &track));
+        duration += track.duration_ms;
+    }
+    CHECK(stats->duration_ms == duration);
+    CHECK(strstr(stats->values[3], "h ") != NULL);
+    CHECK_EQUAL(SCREEN_ACTION_POP, stats->screen.handle_key(stats,
+                (KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, 2).type);
+    stats->screen.enter(stats, 3);
+}
+static void stats_handle_unreadable_library_and_large_durations(void)
+{
+    fake_hal_reset();
+    static FixtureLibrary fixture;
+    StatsScreen stats;
+    stats_screen_init(&stats, fixture_library_open(&fixture), &DEFAULT_THEME);
+    stats.screen.enter(&stats, 0);
+    fixture.memory.failing = true;
+    stats.screen.update(&stats, 1);
+    CHECK(strcmp(stats.values[3], "Unavailable") == 0);
+    stats.screen.update(&stats, 2);
+    fixture.memory.failing = false;
+    stats.screen.enter(&stats, 3);
+    for (uint32_t i = 0; i < stats.track_count; i++) {
+        uint32_t offset = fixture.library.sections[LIBRARY_TRACKS].offset +
+                          i * fixture.library.sections[LIBRARY_TRACKS].record_size + 16;
+        memset(fixture.bytes + offset, 0xff, 4);
+    }
+    stats.screen.update(&stats, 4);
+    CHECK(stats.duration_ms == (uint64_t)UINT32_MAX * stats.track_count);
+    CHECK(strcmp(stats.values[3], "9544h 22m") == 0);
+    Library empty = {0};
+    stats_screen_init(&stats, &empty, &DEFAULT_THEME);
+    stats.screen.enter(&stats, 5);
+    CHECK(strcmp(stats.values[0], "0") == 0);
+    CHECK(strcmp(stats.values[3], "0h 0m") == 0);
+}
+
+static void neo_only_offers_35mm_and_migrates_old_balanced_settings(void)
+{
+    fake_hal_reset();
+    SettingsStore old = {.settings = settings_defaults()};
+    old.settings.output = OUTPUT_BALANCED;
+    CHECK(settings_store_save(&old));
+    SettingsStore loaded;
+    settings_store_load(&loaded);
+    CHECK_EQUAL(OUTPUT_SINGLE_ENDED, loaded.settings.output);
+    settings_store_apply_hardware(&old.settings);
+    CHECK_EQUAL(HAL_AUDIO_OUTPUT_SINGLE_ENDED, fake_hal_audio_output());
+    SettingsScreens screens;
+    settings_screens_init(&screens, (SettingsContext){.store = &loaded}, &DEFAULT_THEME);
+    const MenuItem *item = find_item(&screens, "Output");
+    CHECK(item != NULL);
+    CHECK_EQUAL(SCREEN_ACTION_PUSH, item->select(item->context).type);
+    CHECK_EQUAL(2, screens.choice.config.option_count);
+    CHECK(strcmp("Auto", screens.choice.config.options[0]) == 0);
+    CHECK(strcmp("3.5 mm", screens.choice.config.options[1]) == 0);
+    CHECK_EQUAL(OUTPUT_SINGLE_ENDED, screens.choice.config.current(screens.choice.config.context));
+}
+
 int main(int argc, char **argv)
 {
     const TestCase cases[] = {
+        TEST_CASE(neo_only_offers_35mm_and_migrates_old_balanced_settings),
         TEST_CASE(ipod_theme_is_selectable_and_keeps_the_neopod_accent),
         TEST_CASE(side_buttons_setting_offers_three_modes_and_saves_hybrid),
         TEST_CASE(button_colour_picker_applies_immediately_and_saves),
@@ -262,6 +344,8 @@ int main(int argc, char **argv)
         TEST_CASE(legacy_settings_are_migrated),
         TEST_CASE(invalid_preset_data_is_rejected),
         TEST_CASE(audio_settings_are_reachable),
+        TEST_CASE(stats_show_library_counts_and_duration),
+        TEST_CASE(stats_handle_unreadable_library_and_large_durations),
     };
     int result = test_run_all(cases, TEST_CASE_COUNT(cases));
     if (argc == 3) {

@@ -399,10 +399,10 @@ void diagnostics_menu_build(AppScreens *screens, AppOptions *options, const Them
                                                 .select = NULL,
                                                 .context = NULL,
                                                 .value = diagnostics_row_jack_single_ended};
-    screens->diagnostics_items[24] = (MenuItem){.label = "Jack 4.4",
+    screens->diagnostics_items[24] = (MenuItem){.label = "Headphones",
                                                 .select = NULL,
                                                 .context = NULL,
-                                                .value = diagnostics_row_jack_balanced};
+                                                .value = diagnostics_row_headphones};
     screens->core1_accel = (Core1AccelOption){.run = false};
     screens->diagnostics_items[25] = (MenuItem){.label = "LPC accel",
                                                 .select = run_core1_accel_test,

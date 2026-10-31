@@ -78,6 +78,15 @@ int main(int argc, char **argv)
     home->draw(home->context, &canvas);
     status(&canvas);
     if (!save(argv[1], "home-purple")) return 1;
+#ifdef ECHO_JACK_DIAGNOSTICS
+    Screen *diagnostics = &screens.diagnostics.screen;
+    diagnostics->enter(diagnostics->context, 1000);
+    diagnostics->update(diagnostics->context, 1000);
+    canvas_clear(&canvas, APP_THEME.colors.background);
+    diagnostics->draw(diagnostics->context, &canvas);
+    status(&canvas);
+    if (!save(argv[1], "jack-diagnostics")) return 1;
+#endif
 
     app_theme_apply(6);
     player_set_shuffle(&player, SHUFFLE_SONGS, 7);
@@ -190,6 +199,18 @@ int main(int argc, char **argv)
     bt->screen.draw(bt, &canvas);
     status(&canvas);
     if (!save(argv[1], "bluetooth-device")) return 1;
+    StatsScreen *stats = &screens.settings.stats;
+    for (int theme = 0; theme < 2; theme++) {
+        app_theme_select((uint8_t)theme, 0);
+        stats->screen.enter(stats, 3000);
+        stats->screen.update(stats, 3001);
+        canvas_clear(&canvas, APP_THEME.colors.background);
+        stats->screen.draw(stats, &canvas);
+        status_bar_draw(&canvas, &APP_THEME, (StatusBarState){
+            .playback = STATUS_PLAYBACK_PLAYING, .battery_known = true,
+            .battery_percent = 83, .bluetooth_on = true, .bluetooth_connected = true});
+        if (!save(argv[1], theme ? "stats-ipod" : "stats-neopod")) return 1;
+    }
     puts("Rendered all UI screens in multiple color themes successfully.");
     return 0;
 }

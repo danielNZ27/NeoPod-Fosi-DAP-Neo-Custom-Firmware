@@ -5,6 +5,8 @@
 
 **NeoPod** is an open-source custom firmware for the **Fosi Audio DAP Neo** digital audio player. It brings a clean, retro iPod-style interface, smooth navigation, album artwork support, Bluetooth audio with saved devices and automatic reconnect, and bit-perfect wired playback powered by a dual-core audio architecture.
 
+**Production v1.8.0:** [Download the complete Windows/Python update package](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/raw/refs/heads/main/release/NeoPod-v1.8.0.zip) · [Release notes](release/RELEASE-v1.8.0.md). Applies the owner-confirmed wired-jack pull-bit fix automatically; diagnostic mode is off.
+
 ---
 
 > [!CAUTION]
@@ -20,6 +22,9 @@
 - **Smart Bluetooth Stack**: Low-latency pairing, automatic reconnection, and storage for up to 6 saved devices with seamless PCM anti-pop transitions.
 - **Advanced Sound Tuning**: 5-band custom EQ (-12 dB to +12 dB) with user presets, plus ReplayGain track/album modes with anti-clipping protection.
 - **Fast Media Indexing**: Embedded ID3/Vorbis cover extraction and directory-level artwork scanning (`cover.jpg`, `folder.jpg`).
+- **Headphone Auto Pause/Resume**: Wired unplug or Bluetooth loss pauses active music; reconnect resumes only an automatically paused session. Manual pause stays paused. Neo uses its one 3.5 mm output, with the confirmed GPIO0.13 pull bit 1 applied on boot.
+- **Library Stats & Bluetooth Status**: Settings → System → Stats shows songs, artists, albums and total duration without a slow free-space scan. The top-bar Bluetooth icon flashes while disconnected and stays solid after a confirmed link.
+- **Windows Updater**: A three-page GUI with live recovery indication, visible progress/logs and safe ejection, plus the supported Python command-line tool.
 
 ---
 
@@ -39,9 +44,9 @@
 
 ### Method 1: First-Time Install (From Stock Firmware)
 
-1. Download **`DP3_V170.IMG`** and the **`sd-card/.echo/`** companion folder from the [Latest Release](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/latest).
+1. Extract the [complete v1.8.0 package](release/NeoPod-v1.8.0.zip), including **`DP3_V180.IMG`** and **`sd-card/.echo/`**.
 2. Connect your DAP Neo to your computer via USB-C and power it on.
-3. Place **`DP3_V170.IMG`** directly in the root directory of the player's **Internal Storage**.
+3. Place **`DP3_V180.IMG`** directly in the root directory of the player's **Internal Storage**.
 4. Copy the entire **`.echo`** directory to the root directory of your **MicroSD Card** (resulting in `[SD Card]:/.echo/neo_*.bin`).
 5. Safely unmount and disconnect the USB cable.
 6. The stock bootloader will automatically detect the image and flash NeoPod.
@@ -53,14 +58,17 @@
 
 You can flash new firmware images directly using the Rockchip bootloader interface without reverting to stock:
 
-1. Power off the device (hold **Power** for 5 seconds).
+1. Extract the [complete v1.8.0 package](release/NeoPod-v1.8.0.zip). Before recovery, select USB Storage mode in the player's settings, then unplug USB and power off (hold **Power** for 5 seconds).
 2. Hold **VOL +**, **VOL -**, and **Center / OK** simultaneously (leave **Power** untouched).
 3. Connect the USB-C cable to your PC while holding the three buttons; release after 3–5 seconds. The screen will remain black in Rockusb recovery mode.
-4. Flash the update image:
-   ```bash
-   python flash-neo.py release/DP3_V170.IMG
+4. Open the included **flash-neo.exe**, choose **DP3_V180.IMG**, and follow its three pages. The recovery indicator turns green only for a live recovery connection; the app does not enter recovery automatically. The Python CLI remains supported from the extracted folder:
+   ```powershell
+   python flash-neo.py DP3_V180.IMG
    ```
-5. Update any companion decoders in `[SD Card]:/.echo/` if specified in the [Release Notes](CHANGELOG.md).
+5. Keep USB connected. Both tools validate the matching manifest, flash both slots, try normal reset (0) first, and copy/read-verify all six matching MicroSD companions. Existing settings, library, artwork and saved Bluetooth devices are preserved. No rescan is needed.
+6. Select **Safely eject** in the GUI, or press Enter in the CLI at completion. If reboot stalls, press the pinhole reset once while the tool waits; no repeat flash is needed. For companion-only recovery, use the GUI's **Finish SD companions only** mode or CLI `--sync-only`.
+
+See [all flash helper options and build instructions](docs/flash-neopod.md).
 
 ---
 
@@ -100,19 +108,21 @@ Ensure the following files remain in the root `.echo/` directory on your MicroSD
 ## 🛠️ Building from Source
 
 ### Prerequisites
-- CMake 3.20+
+- CMake 3.25+
 - Ninja build system
 - ARM GNU Embedded Toolchain (`arm-none-eabi-gcc`)
-- Python 3.8+
+- 64-bit Python 3.12 (tested), with the release build requirements below
 
 ### Compile
 Run the build script to compile binaries and package the firmware image:
 
 ```powershell
+python -m venv .venv-flasher
+.\.venv-flasher\Scripts\python.exe -m pip install -r tools/requirements-release.txt
 ./build-neopod.ps1
 ```
 
-Compiled images will be written to `release/`, and companion binaries will be staged in `release/sd-card/.echo/`.
+The build writes `release/DP3_V180.IMG`, matching companions and manifests, both flash tools, a verified package in `build/NeoPod-v1.8.0/`, and `release/NeoPod-v1.8.0.zip`. Production explicitly disables jack diagnostic mode. Both updater formats are maintained from the same flashing engine.
 
 ---
 

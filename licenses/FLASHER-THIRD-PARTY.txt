@@ -1,0 +1,27 @@
+NeoPod Windows updater third-party components
+
+The updater includes PySide6 / Shiboken6 / Qt 6.10.2, copyright The Qt Company
+Ltd. and contributors. Qt for Python is available under LGPLv3/GPLv3 and
+commercial terms. This distribution uses the open-source terms. The LGPLv3
+license and the project's GPLv3 license are included in this package.
+
+Qt and PySide sources:
+https://code.qt.io/cgit/pyside/pyside-setup.git/?h=v6.10.2
+https://code.qt.io/cgit/qt/qtbase.git/?h=v6.10.2
+
+The GUI and flashing-engine Python sources, exact dependency requirements and
+EXE build script are included. To rebuild with modified Qt/PySide libraries,
+prepare a Python environment with those libraries and PyInstaller, then run
+tools/build_flash_neo.py. The build script imports the unchanged flashing engine
+into the EXE. Modification and debugging of the bundled libraries are permitted
+under their respective open-source licenses.
+
+The EXE also includes the Python runtime (Python Software Foundation and
+contributors; its license is included) and the PyInstaller bootloader
+(PyInstaller contributors; GPLv2-or-later with the bootloader distribution
+exception). PyInstaller source and exception:
+https://github.com/pyinstaller/pyinstaller/tree/v6.22.0
+https://pyinstaller.org/en/stable/license.html
+
+Project source and complete build instructions:
+https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware

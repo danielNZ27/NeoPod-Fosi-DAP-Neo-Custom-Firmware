@@ -45,9 +45,16 @@ static const char *const TIMEOUT_OPTIONS[SCREEN_TIMEOUT_OPTION_COUNT] = {
 static const char *const BRIGHTNESS_OPTIONS[BRIGHTNESS_LEVEL_COUNT] = {"1", "2", "3", "4", "5",
                                                                        "6", "7", "8", "9", "10"};
 static const char *const GAIN_OPTIONS[GAIN_LEVEL_COUNT] = {"Low", "High"};
-static const char *const OUTPUT_OPTIONS[OUTPUT_JACK_COUNT] = {"Auto", "3.5 mm", "4.4 mm"};
-static const char *const OUTPUT_MESSAGES[OUTPUT_JACK_COUNT] = {
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+static const char *const OUTPUT_OPTIONS[] = {"Auto", "3.5 mm"};
+static const char *const OUTPUT_MESSAGES[] = {
+    "Using the 3.5 mm output", "Using 3.5 mm volume levels"};
+#else
+static const char *const OUTPUT_OPTIONS[] = {"Auto", "3.5 mm", "4.4 mm"};
+static const char *const OUTPUT_MESSAGES[] = {
     "Volume follows the plugged jack", "Using 3.5 mm volume levels", "Using 4.4 mm volume levels"};
+#endif
+#define OUTPUT_OPTION_COUNT ((int)(sizeof OUTPUT_OPTIONS / sizeof OUTPUT_OPTIONS[0]))
 static const char *const START_OPTIONS[START_SCREEN_COUNT] = {
     "Main menu", "Now Playing", "Albums", "Artists", "Favorites", "Playlists", "Cover Flow"};
 static const char *const USB_MODE_OPTIONS[USB_MODE_COUNT] = {"Storage", "DAC"};
@@ -178,7 +185,8 @@ static void choose_gain(void *context, int index)
 
 static int current_output(const void *context)
 {
-    return (int)settings_of(context)->output;
+    int output = (int)settings_of(context)->output;
+    return output < OUTPUT_OPTION_COUNT ? output : OUTPUT_SINGLE_ENDED;
 }
 
 static void choose_output(void *context, int index)
@@ -195,7 +203,11 @@ static const char *describe_output(int current)
     if (current != OUTPUT_AUTO || jack == HAL_AUDIO_JACK_NONE) {
         return OUTPUT_OPTIONS[current];
     }
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    return "Auto (3.5 mm)";
+#else
     return jack == HAL_AUDIO_JACK_BALANCED ? "Auto (4.4 mm)" : "Auto (3.5 mm)";
+#endif
 }
 
 static int current_start(const void *context)
@@ -294,7 +306,7 @@ static const SettingChoice CHOICES[SETTINGS_CHOICE_COUNT] = {
     [CHOICE_BRIGHTNESS] = {"Brightness", BRIGHTNESS_OPTIONS, BRIGHTNESS_LEVEL_COUNT, current_brightness,
                            choose_brightness, NULL},
     [CHOICE_GAIN] = {"Gain", GAIN_OPTIONS, GAIN_LEVEL_COUNT, current_gain, choose_gain, NULL},
-    [CHOICE_OUTPUT] = {"Output", OUTPUT_OPTIONS, OUTPUT_JACK_COUNT, current_output, choose_output, describe_output},
+    [CHOICE_OUTPUT] = {"Output", OUTPUT_OPTIONS, OUTPUT_OPTION_COUNT, current_output, choose_output, describe_output},
     [CHOICE_START] = {"Start screen", START_OPTIONS, START_SCREEN_COUNT, current_start, choose_start, NULL},
     [CHOICE_REPLAY_GAIN] = {"ReplayGain", REPLAY_GAIN_OPTIONS, REPLAY_GAIN_MODE_COUNT, current_replay_gain,
                             choose_replay_gain, NULL},
@@ -425,6 +437,12 @@ Screen *settings_screens_init(SettingsScreens *screens, SettingsContext context,
         .select = request_rescan,
         .context = &screens->context,
         .opens = false
+    };
+    screens->system_items[2] = (MenuItem){
+        .label = "Stats",
+        .select = menu_open_screen,
+        .context = stats_screen_init(&screens->stats, context.player ? context.player->library : NULL, theme),
+        .opens = true
     };
     menu_screen_init(&screens->system_menu, (MenuConfig){
         .title = "System",

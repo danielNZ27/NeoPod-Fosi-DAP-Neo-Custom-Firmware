@@ -23,8 +23,12 @@ typedef struct StatusBarState {
     bool battery_known;
     uint8_t battery_percent;
     bool charging;
+    bool bluetooth_on;
+    bool bluetooth_connected;
+    uint32_t now_ms;
 } StatusBarState;
 
+Rect status_bar_bluetooth_area(const Theme *theme);
 Rect status_bar_playback_area(const Theme *theme);
 Rect status_bar_battery_area(const Theme *theme);
 int status_bar_battery_fill_width(uint8_t percent, int inner_width);

@@ -5,6 +5,8 @@ __pycache__/
 *.pyc
 .DS_Store
 .venv/
+.venv-flasher/
+release/flash-neo.exe
 log/
 
 release/RKNANOFW.IMG

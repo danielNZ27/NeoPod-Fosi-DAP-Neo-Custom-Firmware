@@ -601,6 +601,9 @@ static StatusBarState current_status_bar(void)
         .battery_known = battery.known,
         .battery_percent = battery.percent,
         .charging = battery.charging,
+        .bluetooth_on = bluetooth_manager_enabled(),
+        .bluetooth_connected = hal_bluetooth_status()->state == HAL_BLUETOOTH_CONNECTED,
+        .now_ms = hal_clock_milliseconds(),
     };
 }
 

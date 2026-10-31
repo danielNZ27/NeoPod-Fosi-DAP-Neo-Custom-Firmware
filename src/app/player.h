@@ -85,6 +85,9 @@ typedef struct Player {
     uint32_t last_save_ms;
     uint32_t save_interval_ms;
     HalAudioJack jack;
+    bool bluetooth_connected;
+    bool bluetooth_ready;
+    bool resume_on_reconnect;
     uint32_t refusal_count;
     HalAudioRefusal refusal;
     bool spoken;

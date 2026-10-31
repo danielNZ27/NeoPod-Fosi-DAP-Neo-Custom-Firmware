@@ -21,6 +21,7 @@ enum {
 };
 
 typedef struct FakeAudio {
+    bool jack_pull_bit;
     HalAudioStatus status;
     char playing_path[PATH_CAPACITY];
     uint32_t play_start_ms;
@@ -599,7 +600,13 @@ void fake_hal_audio_set_jack(HalAudioJack jack)
 
 HalJackPins hal_audio_jack_pins(void)
 {
-    return (HalJackPins){.single_ended = {.high = false}, .balanced = {.high = true}};
+    return (HalJackPins){.single_ended = {.high = false}, .balanced = {.high = true},
+                         .pull_bit = fake.audio.jack_pull_bit};
+}
+
+void hal_audio_jack_set_pull_bit(bool bit)
+{
+    fake.audio.jack_pull_bit = bit;
 }
 
 HalAudioStatus hal_audio_status(void)

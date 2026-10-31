@@ -164,9 +164,36 @@ static void the_percentage_moves_left_of_the_bolt_while_charging(void)
     CHECK(!ui_test_area_has_only(&canvas, percent, theme.colors.header_background));
 }
 
+
+static void bluetooth_is_hidden_off_flashes_disconnected_and_stays_solid_connected(void)
+{
+    Theme theme = status_theme();
+    Rect icon = status_bar_bluetooth_area(&theme);
+    StatusBarState state = {0};
+    Canvas canvas = draw_status(&theme, state);
+    CHECK(!ui_test_area_has_color(&canvas, icon, theme.colors.header_text));
+    state.bluetooth_on = true;
+    canvas = draw_status(&theme, state);
+    CHECK(ui_test_area_has_color(&canvas, icon, theme.colors.header_text));
+    state.now_ms = 500;
+    canvas = draw_status(&theme, state);
+    CHECK(!ui_test_area_has_color(&canvas, icon, theme.colors.header_text));
+    state.now_ms = 1000;
+    canvas = draw_status(&theme, state);
+    CHECK(ui_test_area_has_color(&canvas, icon, theme.colors.header_text));
+    state.bluetooth_connected = true;
+    state.now_ms = 1500;
+    canvas = draw_status(&theme, state);
+    CHECK(ui_test_area_has_color(&canvas, icon, theme.colors.header_text));
+    state.bluetooth_on = false;
+    canvas = draw_status(&theme, state);
+    CHECK(!ui_test_area_has_color(&canvas, icon, theme.colors.header_text));
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
+        TEST_CASE(bluetooth_is_hidden_off_flashes_disconnected_and_stays_solid_connected),
         TEST_CASE(the_percentage_reads_as_a_number_and_a_percent_sign),
         TEST_CASE(the_percentage_sits_just_left_of_the_battery),
         TEST_CASE(a_known_battery_shows_its_percentage),

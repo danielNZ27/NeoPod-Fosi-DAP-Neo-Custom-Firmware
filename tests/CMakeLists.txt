@@ -453,3 +453,14 @@ echo_add_unit_test(NAME test_audio_settings SOURCES app/test_audio_settings.c ap
     LIBRARIES echo_app echo_library_fixtures PRIVATE_INCLUDES ${PROJECT_SOURCE_DIR}/src/app)
 echo_add_unit_test(NAME test_boot_image SOURCES app/test_boot_image.c app/fake_hal.c
     LIBRARIES echo_app echo_library_fixtures PRIVATE_INCLUDES ${PROJECT_SOURCE_DIR}/src/app)
+
+# Compile the actual Neo board adapter so synthetic inactive inputs are covered.
+echo_add_unit_test(NAME test_neo_jack
+    SOURCES device/test_neo_jack.c ../platform/device/board/jack.c
+    LIBRARIES echo_device_logic echo_hal
+    PRIVATE_INCLUDES ${PROJECT_SOURCE_DIR}/platform/device/board
+)
+target_compile_definitions(test_neo_jack PRIVATE ECHO_BOARD_NEO=1)
+echo_add_unit_test(NAME test_dac_headphone_detect
+    SOURCES device/test_dac_headphone_detect.c
+    LIBRARIES echo_device_logic)

@@ -126,9 +126,21 @@ typedef struct HalJackPin {
     bool pull;
 } HalJackPin;
 
+typedef struct HalDacHeadphoneProbe {
+    bool powered;
+    bool valid;
+    uint8_t control;
+    uint8_t status;
+} HalDacHeadphoneProbe;
+
 typedef struct HalJackPins {
     HalJackPin single_ended;
     HalJackPin balanced;
+    uint32_t raw_changes;
+    uint32_t stable_changes;
+    uint32_t input_banks[3];
+    HalDacHeadphoneProbe dac_probe;
+    bool pull_bit;
 } HalJackPins;
 
 bool hal_audio_play(const char *path, uint32_t start_ms, uint32_t token);
@@ -153,5 +165,6 @@ HalToneResult hal_audio_dma_tone_start(uint32_t sample_rate);
 void hal_audio_dma_tone_stop(void);
 HalDmaToneStatus hal_audio_dma_tone_status(void);
 HalJackPins hal_audio_jack_pins(void);
+void hal_audio_jack_set_pull_bit(bool bit);
 HalAudioJack hal_audio_jack(void);
 HalAudioRefusal hal_audio_refusal(void);

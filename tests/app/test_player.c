@@ -280,14 +280,14 @@ static void pulling_the_headphones_out_pauses_playback(void)
     CHECK_EQUAL(HAL_AUDIO_PAUSED, fake_hal_audio_state());
 }
 
-static void plugging_the_headphones_back_in_does_not_resume(void)
+static void plugging_the_headphones_back_in_resumes(void)
 {
     Player *started = playing(0);
     fake_hal_audio_set_jack(HAL_AUDIO_JACK_NONE);
     player_update(started, 100);
     fake_hal_audio_set_jack(HAL_AUDIO_JACK_SINGLE_ENDED);
     player_update(started, 200);
-    CHECK_EQUAL(PLAYER_PAUSED, player_status(started).state);
+    CHECK_EQUAL(PLAYER_PLAYING, player_status(started).state);
 }
 
 static void switching_from_one_jack_to_the_other_keeps_playing(void)
@@ -533,9 +533,62 @@ static void play_after_a_release_starts_the_output_again(void)
     CHECK_EQUAL(PLAYER_PLAYING, player_status(started).state);
 }
 
+static void manually_paused_music_stays_paused_on_reconnect(void)
+{
+    Player *p = playing(0);
+    player_toggle_pause(p);
+    fake_hal_audio_set_jack(HAL_AUDIO_JACK_NONE);
+    player_update(p, 100);
+    fake_hal_audio_set_jack(HAL_AUDIO_JACK_SINGLE_ENDED);
+    player_update(p, 200);
+    CHECK_EQUAL(PLAYER_PAUSED, player_status(p).state);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    fake_hal_bluetooth()->streaming = true;
+    player_update(p, 300);
+    CHECK_EQUAL(PLAYER_PAUSED, player_status(p).state);
+}
+static void bluetooth_loss_pauses_and_stream_ready_reconnect_resumes(void)
+{
+    Player *p = playing(0);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    fake_hal_bluetooth()->streaming = true;
+    player_update(p, 100);
+    fake_hal_audio_set_jack(HAL_AUDIO_JACK_NONE);
+    player_update(p, 200);
+    CHECK_EQUAL(PLAYER_PLAYING, player_status(p).state);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_READY;
+    fake_hal_bluetooth()->streaming = false;
+    player_update(p, 300);
+    CHECK_EQUAL(PLAYER_PAUSED, player_status(p).state);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTING;
+    player_update(p, 400);
+    CHECK_EQUAL(PLAYER_PAUSED, player_status(p).state);
+    fake_hal_bluetooth()->state = HAL_BLUETOOTH_CONNECTED;
+    player_update(p, 500);
+    CHECK_EQUAL(PLAYER_PAUSED, player_status(p).state);
+    fake_hal_bluetooth()->streaming = true;
+    player_update(p, 600);
+    CHECK_EQUAL(PLAYER_PLAYING, player_status(p).state);
+}
+static void manual_play_then_pause_cancels_automatic_resume(void)
+{
+    Player *p = playing(0);
+    fake_hal_audio_set_jack(HAL_AUDIO_JACK_NONE);
+    player_update(p, 100);
+    CHECK_EQUAL(PLAYER_PAUSED, player_status(p).state);
+    player_toggle_pause(p);
+    player_toggle_pause(p);
+    fake_hal_audio_set_jack(HAL_AUDIO_JACK_SINGLE_ENDED);
+    player_update(p, 200);
+    CHECK_EQUAL(PLAYER_PAUSED, player_status(p).state);
+}
+
 int main(void)
 {
     static const TestCase cases[] = {
+        TEST_CASE(manually_paused_music_stays_paused_on_reconnect),
+        TEST_CASE(bluetooth_loss_pauses_and_stream_ready_reconnect_resumes),
+        TEST_CASE(manual_play_then_pause_cancels_automatic_resume),
         TEST_CASE(playing_a_list_starts_the_selected_track),
         TEST_CASE(the_status_carries_the_playing_tracks_format),
         TEST_CASE(the_format_waits_for_the_audio_to_reach_the_track),
@@ -559,7 +612,7 @@ int main(void)
         TEST_CASE(each_refused_track_is_counted_with_its_reason),
         TEST_CASE(refusals_explain_themselves),
         TEST_CASE(pulling_the_headphones_out_pauses_playback),
-        TEST_CASE(plugging_the_headphones_back_in_does_not_resume),
+        TEST_CASE(plugging_the_headphones_back_in_resumes),
         TEST_CASE(switching_from_one_jack_to_the_other_keeps_playing),
         TEST_CASE(starting_with_nothing_plugged_in_still_plays),
         TEST_CASE(volume_changes_are_clamped_and_sent),

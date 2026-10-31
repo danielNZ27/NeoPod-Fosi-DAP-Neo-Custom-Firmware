@@ -630,3 +630,25 @@ bool dac_path_is_muted(void)
 {
     return muted;
 }
+
+HalDacHeadphoneProbe dac_path_headphone_probe(void)
+{
+#if defined(ECHO_BOARD_NEO) && defined(ECHO_JACK_DIAGNOSTICS)
+    static HalDacHeadphoneProbe sample;
+    static uint32_t last_ms;
+    if (!dac_up || board_bluetooth_routed()) {
+        sample = (HalDacHeadphoneProbe){0};
+        return sample;
+    }
+    uint32_t now_ms = hal_clock_milliseconds();
+    if (!sample.powered || now_ms - last_ms >= 100) {
+        last_ms = now_ms;
+        sample = (HalDacHeadphoneProbe){.powered = true};
+        sample.valid = dac_headphone_detect_read(&BUS, DAC_RIGHT_ADDRESS,
+                                                 &sample.control, &sample.status);
+    }
+    return sample;
+#else
+    return (HalDacHeadphoneProbe){0};
+#endif
+}

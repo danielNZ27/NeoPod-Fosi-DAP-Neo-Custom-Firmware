@@ -69,3 +69,11 @@ unmute. Normal wired playback and explicit volume controls remain available.
 
 When updating, preserve `bluetooth.bin`, settings, library and artwork. Replace
 the matching firmware/scanner files listed in the release instructions.
+
+## Connection indication (v1.7.2)
+
+Reconnect-command acknowledgements alone do not indicate a connection. NeoPod queries the module and waits for a complete connected status report before showing Connected or starting Bluetooth audio. While headphones are off it can keep retrying, but the top-bar icon should continue flashing. It becomes solid only after the module reports a connected link.
+
+## Automatic pause and resume (v1.7.3)
+
+Losing the Bluetooth connection pauses music that was playing. Once headphones reconnect and their audio stream is ready, NeoPod resumes that automatically paused session. Music you paused yourself stays paused. Manual play/pause cancels pending automatic resume. Wired headphone unplug/replug uses the same behavior; wired jack changes are ignored during a connected Bluetooth session.

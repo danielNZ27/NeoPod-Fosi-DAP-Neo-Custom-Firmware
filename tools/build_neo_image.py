@@ -106,8 +106,8 @@ def build():
             if offset is not None:
                 im.d[offset:offset + len(packed)] = packed
 
-    # Update BCD build date: 2026-10-31
-    im.set_date("20261031")
+    # Update BCD build date: 2026-11-01
+    im.set_date("20261101")
     
     # Update version field in header at 0x4 (version 1.38 = 0x01, 0x26 = 38)
     struct.pack_into("<HH", im.d, 0x4, 0x0100, args.version - 100)

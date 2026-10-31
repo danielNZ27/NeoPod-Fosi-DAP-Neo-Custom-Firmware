@@ -30,6 +30,13 @@ Rect status_bar_playback_area(const Theme *theme)
     return (Rect){theme->metrics.padding, icon_top(theme), size, size};
 }
 
+Rect status_bar_bluetooth_area(const Theme *theme)
+{
+    Rect playback = status_bar_playback_area(theme);
+    return (Rect){playback.x + playback.width + 4, playback.y,
+                  playback.width, playback.height};
+}
+
 Rect status_bar_battery_area(const Theme *theme)
 {
     int size = theme->metrics.status_icon_size;
@@ -126,6 +133,9 @@ void status_bar_draw(Canvas *canvas, const Theme *theme, StatusBarState state)
         icon_draw_play(canvas, icon, color);
     } else if (state.playback == STATUS_PLAYBACK_PAUSED) {
         icon_draw_pause(canvas, icon, color);
+    }
+    if (state.bluetooth_on && (state.bluetooth_connected || (state.now_ms / 500u) % 2u == 0)) {
+        icon_draw_bluetooth(canvas, status_bar_bluetooth_area(theme), color);
     }
     if (state.battery_known) {
         draw_battery(canvas, theme, state);

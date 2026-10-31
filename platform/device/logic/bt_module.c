@@ -180,11 +180,13 @@ static void handle_status(BtModule *module, const uint8_t *bytes, uint32_t size,
     module->status.link_status = (char)bytes[2];
     if (bytes[2] == 'O' || bytes[2] == 'o') {
         if (size < CONNECTED_HEADER_SIZE + ADDRESS_SIZE) return;
+        module->verify_link = false;
         copy_device(&module->status.connected, bytes + CONNECTED_HEADER_SIZE,
                     size - CONNECTED_HEADER_SIZE);
         set_state(module, HAL_BLUETOOTH_CONNECTED, now_ms);
-    } else if (module->status.state == HAL_BLUETOOTH_CONNECTED &&
-               (bytes[2] == 'S' || bytes[2] == 'L' || bytes[2] == 'I')) {
+    } else if (bytes[2] == 'S' || bytes[2] == 'L' || bytes[2] == 'I') {
+        module->verify_link = false;
+        if (module->status.state != HAL_BLUETOOTH_CONNECTED) return;
         set_state(module, HAL_BLUETOOTH_READY, now_ms);
     }
 }
@@ -197,22 +199,22 @@ static void finish_connect(BtModule *module, HalBluetoothPairing pairing, uint32
     }
 }
 
-static void mark_connected(BtModule *module, uint32_t now_ms)
-{
-    module->status.pairing = HAL_BLUETOOTH_PAIRED;
-    module->status.connected = module->target;
-    set_state(module, HAL_BLUETOOTH_CONNECTED, now_ms);
-}
-
 static void handle_link(BtModule *module, const uint8_t *bytes, uint32_t size, uint32_t now_ms)
 {
     bool failed = size == WORD_FRAME_SIZE && word_is(bytes + 2, 'E', 'R');
+    bool acknowledged = size == WORD_FRAME_SIZE && word_is(bytes + 2, 'O', 'K');
     if (failed) {
+        module->verify_link = false;
         finish_connect(module, HAL_BLUETOOTH_PAIRING_FAILED, now_ms);
-    } else if (bytes[1] == 'H') {
-        mark_connected(module, now_ms);
-    } else if (word_is(bytes + 2, 'O', 'K')) {
-        finish_connect(module, HAL_BLUETOOTH_PAIRED, now_ms);
+    } else if (acknowledged || (bytes[1] == 'H' && size == SHORT_FRAME_SIZE)) {
+        /* CH/CHOK can acknowledge a reconnect to headphones that are off.
+           Query the link instead of publishing a fabricated connected target. */
+        if (module->status.state == HAL_BLUETOOTH_CONNECTING ||
+            module->status.state == HAL_BLUETOOTH_READY ||
+            module->status.state == HAL_BLUETOOTH_CONNECTED) {
+            module->verify_link = true;
+            module->status.pairing = HAL_BLUETOOTH_PAIRED;
+        }
     }
 }
 
@@ -372,6 +374,7 @@ bool bt_module_connect_device(BtModule *module, const HalBluetoothDevice *device
     if (!idle || device == NULL) {
         return false;
     }
+    module->verify_link = false;
     module->target = *device;
     module->reconnecting = reconnect;
     module->status.pairing = HAL_BLUETOOTH_PAIRING_NONE;
@@ -381,6 +384,7 @@ bool bt_module_connect_device(BtModule *module, const HalBluetoothDevice *device
 
 bool bt_module_disconnect(BtModule *module, uint32_t now_ms, BtModuleFrame *frame)
 {
+    module->verify_link = false;
     HalBluetoothState state = module->status.state;
     if (state == HAL_BLUETOOTH_CONNECTING) {
         set_state(module, HAL_BLUETOOTH_READY, now_ms);
@@ -451,13 +455,19 @@ static bool wait_for_ready(BtModule *module, uint32_t now_ms)
 bool bt_module_poll(BtModule *module, uint32_t now_ms, BtModuleFrame *frame)
 {
     parse(module, now_ms - module->last_byte_ms >= BT_MODULE_SILENCE_MS, now_ms);
+    if (module->verify_link) {
+        module->verify_link = false;
+        module->last_query_ms = now_ms;
+        return command(frame, 'Q');
+    }
     switch (module->status.state) {
     case HAL_BLUETOOTH_STARTING:
         return wait_for_ready(module, now_ms);
     case HAL_BLUETOOTH_SCANNING:
         return follow_scan(module, now_ms, frame);
     case HAL_BLUETOOTH_CONNECTING:
-        return follow_connect(module, now_ms, frame);
+        return follow_connect(module, now_ms, frame) ||
+               (module->status.pairing == HAL_BLUETOOTH_PAIRED && query_status(module, now_ms, frame));
     case HAL_BLUETOOTH_CONNECTED:
         return send_play_notice(module, now_ms, frame) || query_status(module, now_ms, frame);
     case HAL_BLUETOOTH_READY:

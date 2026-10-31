@@ -25,3 +25,4 @@ uint32_t dac_path_probe_gpio2_direction(void);
 
 uint8_t dac_path_applied_volume(void);
 bool dac_path_is_muted(void);
+HalDacHeadphoneProbe dac_path_headphone_probe(void);

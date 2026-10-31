@@ -338,7 +338,7 @@ void hal_bluetooth_save_trace(void)
     trace_pending = false;
     static char text[4096];
     StringBuilder builder = string_builder_make(text, sizeof text);
-    string_builder_append(&builder, "NeoPod V170 Bluetooth: T=TX R=RX S=state A=audio mute P=power\nstate=");
+    string_builder_append(&builder, "NeoPod V175 Bluetooth: T=TX R=RX S=state A=audio mute P=power\nstate=");
     string_builder_append_unsigned(&builder, module.status.state);
     string_builder_append(&builder, " requested=");
     string_builder_append_unsigned(&builder, stream_requested);

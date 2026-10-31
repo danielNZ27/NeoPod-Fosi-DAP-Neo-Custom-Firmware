@@ -4,13 +4,17 @@ Supports flashing both stock firmware (DP3_V137.img) and custom firmware
 (DP3_V147.IMG, NeoPod, etc.) directly to flash Slot 1 & Slot 2.
 
 No need to reinstall stock firmware first!
+After reset, waits for the NeoPod SD card, then copies and verifies the matching
+six .echo companions. Settings, Bluetooth records and library files are preserved.
+Use a complete build package with SHA256SUMS.txt beside the image.
 
 Usage:
     python flash-neo.py [path/to/firmware.img]
+    Open flash-neo.exe for the graphical three-step updater.
 
 Examples:
-    python flash-neo.py release/DP3_V147.IMG
-    python flash-neo.py DP3_V137.img
+    python flash-neo.py build/NeoPod-v1.7.3/DP3_V173.IMG
+    python flash-neo.py DP3_V137.img --skip-companions
 
 Requires DAP Neo in Rockusb recovery mode:
   1. Unplug USB cable.
@@ -23,6 +27,7 @@ Requires DAP Neo in Rockusb recovery mode:
 import ctypes as c
 from ctypes import wintypes as w
 import winreg, struct, hashlib, sys, time, argparse
+import json, os, re, shutil, subprocess, tempfile
 from pathlib import Path
 
 k = c.WinDLL('kernel32', use_last_error=True)
@@ -124,9 +129,10 @@ class Rockusb:
             raise RuntimeError(f'Write failed at LBA {lba}: status={result}')
 
     def reset(self, subcode=0):
-        # Rockchip: 0 = normal reset, 1 = reset to normal USB/MSC boot.
-        if subcode not in (0, 1):
-            raise ValueError('Only normal-boot reset modes are supported')
+        # Rockchip reset subcodes: 0 normal, 1 MSC boot, 4 disconnect-reset.
+        # Never use power-off (2) or Maskrom (3) for this workflow.
+        if subcode not in (0, 1, 4):
+            raise ValueError('Only normal, MSC and disconnect-reset modes are supported')
         self.tag += 1
         cb = bytes([0xFF, subcode]) + bytes(14)
         cbw = struct.pack('<IIIBBB', 0x43425355, self.tag, 0, 0x00, 0, 6) + cb
@@ -152,55 +158,276 @@ def recovery_interface_present(path):
     return True
 
 
+def wait_recovery_disconnect(path, timeout=12.0):
+    deadline = time.monotonic() + timeout
+    absent = 0
+    while time.monotonic() < deadline:
+        if recovery_interface_present(path):
+            absent = 0
+        else:
+            absent += 1
+            if absent >= 3:
+                return True
+        time.sleep(0.25)
+    return False
+
+
 def restart_player(usb, path):
-    for subcode in (0, 1):
-        if subcode == 1:
-            print('Still in recovery; trying Rockchip normal-boot/MSC reset...')
+    # Normal reset is confirmed on the Neo; MSC boot failed on the user's unit.
+    modes = ((0, 'normal reset'), (4, 'disconnect reset'), (1, 'normal-storage boot'))
+    for attempt, (subcode, description) in enumerate(modes):
+        if attempt:
             try:
                 usb = Rockusb(path)
             except OSError as error:
                 print(f'Could not reopen recovery interface: {error}')
                 return False
-        problem = None
+        print(f'Trying {description} (Rockchip reset {subcode})...')
         try:
             usb.reset(subcode)
         except (OSError, TimeoutError, RuntimeError) as error:
-            # Disconnecting before the final status is normal for some loaders.
-            # It counts as leaving recovery only after the live check below.
-            problem = str(error)
+            # Some loaders detach before returning their status packet.
+            print(f'Reset response: {error}')
         finally:
             usb.close()
-        deadline = time.monotonic() + 3.0
-        while time.monotonic() < deadline:
-            try:
-                if not recovery_interface_present(path):
-                    return True
-            except OSError as error:
-                print(f'Could not check recovery disconnect: {error}')
-                return False
-            time.sleep(0.2)
-        if problem:
-            print(f'Reset attempt did not leave recovery: {problem}')
+        try:
+            if wait_recovery_disconnect(path):
+                return True
+        except OSError as error:
+            print(f'Could not confirm recovery disconnect: {error}')
+            return False
     return False
 
 
-def flash(image_path=None):
-    if not image_path:
-        root = Path(__file__).resolve().parent
-        candidates = [
-            root / "release/DP3_V147.IMG",
-            root / "DP3_V147.IMG",
-            root / "DP3_V137.img",
-        ]
-        for c_path in candidates:
-            if c_path.exists():
-                image_path = c_path
-                break
-        if not image_path:
-            raise FileNotFoundError("No image path provided and no default image found.")
-    else:
-        image_path = Path(image_path).resolve()
+def live_recovery_path():
+    """Return a usable recovery interface, not a stale registry entry."""
+    try:
+        path = device_path()
+        return path if recovery_interface_present(path) else None
+    except (OSError, RuntimeError):
+        return None
 
+
+COMPANION_NAMES = ('neo_scan.bin', 'neo_flac.bin', 'neo_mp3.bin',
+                   'neo_aac.bin', 'neo_opus.bin', 'boot.rgb565')
+
+
+def default_image():
+    # A one-file EXE extracts __file__ to a temporary directory. Firmware stays
+    # beside the executable, outside that temporary bundle.
+    root = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve().parent
+    if (root / 'NeoPod' / 'release').is_dir():
+        root = root / 'NeoPod'
+    candidates = []
+    for directory in (root / 'release', root):
+        for file in directory.glob('DP3_V*.IMG'):
+            match = re.fullmatch(r'DP3_V(\d+)\.IMG', file.name, re.IGNORECASE)
+            if match:
+                candidates.append((int(match[1]), file))
+    if not candidates:
+        raise FileNotFoundError('No firmware image found; supply its path.')
+    return max(candidates, key=lambda item: item[0])[1].resolve()
+
+
+def companion_payload(image, source=None):
+    """Validate the package before any firmware writes. Never mix build versions."""
+    source = Path(source).resolve() if source else image.parent / 'sd-card' / '.echo'
+    manifest = image.parent / 'SHA256SUMS.txt'
+    if not manifest.is_file():
+        raise FileNotFoundError(f'Missing {manifest}. Use a complete build package, or --skip-companions.')
+    checksums = {}
+    for line in manifest.read_text(encoding='utf-8-sig').splitlines():
+        if not line.strip():
+            continue
+        digest, name = line.split(maxsplit=1)
+        name = name.lstrip('*').replace('\\', '/')
+        basename = name.rsplit('/', 1)[-1]
+        if not re.fullmatch(r'[0-9a-fA-F]{64}', digest) or basename in checksums:
+            raise ValueError(f'Invalid or duplicate checksum entry: {line}')
+        checksums[basename] = digest.lower()
+    image_digest = hashlib.sha256(image.read_bytes()).hexdigest()
+    expected = checksums.get(image.name)
+    if image.name.upper() == 'RKNANOFW.IMG':
+        valid_image = any(name.upper().endswith('.IMG') and digest == image_digest
+                          for name, digest in checksums.items())
+    else:
+        valid_image = expected == image_digest
+    if not valid_image:
+        raise ValueError('Firmware does not match its SHA256SUMS.txt. Select the matching build package.')
+    payload = {}
+    for name in COMPANION_NAMES:
+        file = source / name
+        data = file.read_bytes()
+        if hashlib.sha256(data).hexdigest() != checksums.get(name):
+            raise ValueError(f'Companion checksum mismatch: {file}')
+        payload[name] = data
+    print(f'Validated firmware and {len(payload)} matching SD companion files.')
+    return payload
+
+
+# Require both NeoPod's USB ancestry and its SD-card LUN. An arbitrary removable
+# drive or any folder named .echo is never enough to authorize automatic copying.
+DRIVE_QUERY = r"""
+$ErrorActionPreference = 'Stop'
+$result = @()
+foreach ($disk in Get-CimInstance Win32_DiskDrive) {
+    if ($disk.SCSILogicalUnit -ne 1 -or $disk.Model -notmatch 'ECHOPOD.*SD card') { continue }
+    $instance = $disk.PNPDeviceID
+    $neo = $false
+    for ($depth = 0; $depth -lt 8 -and $instance; $depth++) {
+        if ($instance -match '^USB\\VID_1209&PID_0001') { $neo = $true; break }
+        $instance = (Get-PnpDeviceProperty -InstanceId $instance -KeyName 'DEVPKEY_Device_Parent' -ErrorAction SilentlyContinue).Data
+    }
+    if (-not $neo) { continue }
+    foreach ($partition in Get-CimAssociatedInstance -InputObject $disk -Association Win32_DiskDriveToDiskPartition) {
+        foreach ($volume in Get-CimAssociatedInstance -InputObject $partition -Association Win32_LogicalDiskToPartition) {
+            $result += [pscustomobject]@{root=($volume.DeviceID + '\'); disk=[int]$disk.Index; id=$disk.PNPDeviceID; usb=$instance}
+        }
+    }
+}
+ConvertTo-Json -InputObject @($result) -Compress
+"""
+
+
+def neopod_sd_drives():
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', DRIVE_QUERY],
+                            capture_output=True, text=True, timeout=15,
+                            creationflags=subprocess.CREATE_NO_WINDOW)
+    if result.returncode:
+        raise RuntimeError('Windows disk identification failed: ' + result.stderr.strip())
+    return json.loads(result.stdout.strip() or '[]')
+
+
+def checked_drive_root(value):
+    drive = Path(value).resolve()
+    if str(drive) != drive.anchor or not drive.is_dir():
+        raise ValueError('--sd-drive must name an existing drive root, for example F:\\')
+    if drive.drive.lower() == os.environ.get('SystemDrive', 'C:').lower():
+        raise ValueError('Refusing to use the Windows system drive as the SD card.')
+    return drive
+
+
+def wait_for_sd(timeout=180.0, sd_drive=None):
+    print('Waiting for the NeoPod MicroSD drive to mount...')
+    print('If reboot stalls, press the pinhole reset once. Keep USB connected and use USB Storage mode.')
+    deadline = time.monotonic() + timeout
+    last_problem = None
+    while time.monotonic() < deadline:
+        if sd_drive:
+            try:
+                return checked_drive_root(sd_drive)
+            except (ValueError, OSError) as error:
+                last_problem = str(error)
+        else:
+            try:
+                candidates = neopod_sd_drives()
+                if len(candidates) > 1:
+                    raise ValueError('Multiple NeoPod SD volumes found. Select one explicitly with --sd-drive.')
+                if len(candidates) == 1:
+                    return checked_drive_root(candidates[0]['root'])
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+                last_problem = str(error)
+        time.sleep(1)
+    detail = f' Last disk check: {last_problem}' if last_problem else ''
+    raise TimeoutError('The SD drive did not mount. No companion files were copied.'
+                       ' After mounting it, run with --sync-only and the same image.' + detail)
+
+
+def request_device_eject(instance_id):
+    """Ask Windows PnP to safely remove the USB parent, covering both LUNs."""
+    cfg = c.WinDLL('cfgmgr32', use_last_error=True)
+    cfg.CM_Locate_DevNodeW.argtypes = [c.POINTER(w.DWORD), w.LPWSTR, w.ULONG]
+    cfg.CM_Locate_DevNodeW.restype = w.ULONG
+    cfg.CM_Request_Device_EjectW.argtypes = [w.DWORD, c.POINTER(w.DWORD), w.LPWSTR, w.ULONG, w.ULONG]
+    cfg.CM_Request_Device_EjectW.restype = w.ULONG
+    node, veto = w.DWORD(), w.DWORD()
+    reason = c.create_unicode_buffer(260)
+    result = cfg.CM_Locate_DevNodeW(c.byref(node), instance_id, 0)
+    if result != 0:
+        raise RuntimeError(f'Windows could not locate the NeoPod USB device (0x{result:x}).')
+    result = cfg.CM_Request_Device_EjectW(node, c.byref(veto), reason, len(reason), 0)
+    if result != 0:
+        raise RuntimeError(f'Windows refused safe removal (0x{result:x}, veto {veto.value}: {reason.value}).'
+                           ' Close open player files/Explorer windows and use Safely Remove Hardware.')
+
+
+def eject_player(root):
+    root = Path(root).resolve()
+    matches = [device for device in neopod_sd_drives()
+               if Path(device['root']).resolve() == root]
+    if len(matches) != 1:
+        raise RuntimeError('Could not uniquely identify this SD drive as the connected DAP Neo. Eject it manually.')
+    instance = matches[0].get('usb', '')
+    if not re.match(r'^USB\\VID_1209&PID_0001(?:[&\\])', instance, re.IGNORECASE):
+        raise RuntimeError('The USB parent is not the identified NeoPod. Eject it manually.')
+    request_device_eject(instance)
+    print('[EJECTED] Windows accepted safe removal of DAP Neo and both storage drives. You can unplug USB.')
+
+
+def prompt_to_eject(root):
+    try:
+        input('\nPress Enter to safely eject DAP Neo, or close this window to leave it mounted: ')
+    except (EOFError, KeyboardInterrupt):
+        print('\nLeft mounted. Use Windows Safely Remove Hardware before unplugging.')
+        return
+    try:
+        eject_player(root)
+    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+        print(f'[NOT EJECTED] {error}')
+
+
+def sync_companions(root, payload):
+    """Stage, back up, replace and read-verify only the six supplied companions."""
+    root = Path(root).resolve()
+    if set(payload) != set(COMPANION_NAMES):
+        raise ValueError('Expected exactly the six firmware companion files.')
+    echo = root / '.echo'
+    if echo.is_symlink() or (echo.exists() and echo.resolve().parent != root):
+        raise ValueError('Refusing a redirected .echo directory.')
+    echo.mkdir(exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix='.neopod-update-', dir=echo))
+    backup = work / 'backup'
+    backup.mkdir()
+    existed, replaced = set(), []
+    try:
+        for name, data in payload.items():
+            destination = echo / name
+            if destination.is_symlink() or destination.is_dir():
+                raise ValueError(f'Refusing a redirected or non-file companion: {destination}')
+            if destination.exists():
+                shutil.copyfile(destination, backup / name)
+                existed.add(name)
+            with (work / name).open('wb') as output:
+                output.write(data)
+                output.flush()
+                os.fsync(output.fileno())
+            if (work / name).read_bytes() != data:
+                raise IOError(f'Staged verification failed: {name}')
+        for name, data in payload.items():
+            destination = echo / name
+            os.replace(work / name, destination)
+            replaced.append(name)
+            if destination.read_bytes() != data:
+                raise IOError(f'SD read-back verification failed: {name}')
+            print(f'  Updated and verified: .echo/{name}')
+    except Exception:
+        for name in reversed(replaced):
+            try:
+                if name in existed:
+                    shutil.copyfile(backup / name, echo / name)
+                else:
+                    (echo / name).unlink(missing_ok=True)
+            except OSError as error:
+                print(f'Rollback needs attention for {name}: {error}')
+        print(f'Update failed. Backups retained at {backup}')
+        raise
+    # Keep the old companion copies until the owner confirms the new build works.
+    print(f'Previous companion files backed up at {backup}')
+    print('[COMPLETE] Firmware companions copied and verified. Safely eject both player drives, then unplug USB.')
+
+
+def checked_firmware_bytes(image_path):
+    image_path = Path(image_path)
     if not image_path.exists():
         raise FileNotFoundError(f"Missing image file: {image_path}")
 
@@ -210,10 +437,25 @@ def flash(image_path=None):
 
     if raw_data[0x1f8:0x200] != b'RKnanoFW':
         raise ValueError(f"Invalid image magic: expected 'RKnanoFW' at offset 0x1f8, found {raw_data[0x1f8:0x200]}")
+    return raw_data[:13631488]
 
-    raw_payload = raw_data[:13631488]
+
+def flash(image_path=None, *, skip_companions=False, companions_dir=None,
+          sd_drive=None, mount_timeout=180.0, sync_only=False):
+    image_path = Path(image_path).resolve() if image_path else default_image()
+    payload = None if skip_companions else companion_payload(image_path, companions_dir)
+    raw_payload = checked_firmware_bytes(image_path)
     total_sectors = len(raw_payload) // 512
 
+    if sd_drive:
+        # Validate syntax before flashing; the drive itself may mount only later.
+        candidate = Path(sd_drive).resolve()
+        if str(candidate) != candidate.anchor or candidate.drive.lower() == os.environ.get('SystemDrive', 'C:').lower():
+            raise ValueError('--sd-drive must be a non-system drive root, for example F:\\')
+    if sync_only:
+        mounted = wait_for_sd(mount_timeout, sd_drive)
+        sync_companions(mounted, payload)
+        return mounted
     print(f"Firmware to flash: {image_path.name} ({len(raw_payload)} bytes / {total_sectors} sectors)")
     print("Locating DAP Neo in Rockusb recovery mode...")
     path = device_path()
@@ -250,18 +492,32 @@ def flash(image_path=None):
         disconnected = restart_player(usb, path)
         print(f"\n[COMPLETE] Successfully flashed {image_path.name}.")
         if disconnected:
-            print('Recovery interface disconnected after reset; the player should now boot.')
+            print('Recovery interface disconnected; waiting for normal boot and SD mount.')
         else:
-            print('[NOTE] Automatic restart was not confirmed. Use the pinhole reset as usual; no reflash is needed.')
+            print('[NOTE] Recovery did not disconnect. Press the pinhole reset once; no reflash is needed.')
     finally:
         usb.close()
+    if payload is not None:
+        mounted = wait_for_sd(mount_timeout, sd_drive)
+        sync_companions(mounted, payload)
+        return mounted
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('image', nargs='?', help='Firmware image to flash')
     parser.add_argument('--reset-only', action='store_true',
                         help='Try restarting a player already in recovery; do not write firmware')
+    parser.add_argument('--skip-companions', action='store_true', help='Flash firmware only; do not copy SD companions')
+    parser.add_argument('--companions-dir', help='Matching companion source directory (validated against the image manifest)')
+    parser.add_argument('--sd-drive', help='Explicit MicroSD drive root, e.g. F:\\; otherwise identify the NeoPod SD LUN automatically')
+    parser.add_argument('--mount-timeout', type=float, default=180, help='Seconds to wait for SD mount (default: 180)')
+    parser.add_argument('--sync-only', action='store_true', help='Copy matching companions after a manual reboot; do not flash or reset')
+    parser.add_argument('--no-eject-prompt', action='store_true', help='Finish without waiting for Enter or ejecting the player')
     args = parser.parse_args()
+    if not 0 < args.mount_timeout <= 3600:
+        parser.error('--mount-timeout must be between 0 and 3600 seconds')
+    if args.sync_only and (args.reset_only or args.skip_companions):
+        parser.error('--sync-only cannot be combined with --reset-only or --skip-companions')
     if args.reset_only:
         if args.image:
             parser.error('--reset-only does not accept a firmware image')
@@ -275,4 +531,12 @@ if __name__ == "__main__":
         finally:
             usb.close()
     else:
-        flash(args.image)
+        try:
+            mounted = flash(args.image, skip_companions=args.skip_companions,
+                  companions_dir=args.companions_dir, sd_drive=args.sd_drive,
+                  mount_timeout=args.mount_timeout, sync_only=args.sync_only)
+            if mounted is not None and not args.no_eject_prompt:
+                prompt_to_eject(mounted)
+        except (OSError, RuntimeError, ValueError) as error:
+            print(f'[ERROR] {error}', file=sys.stderr)
+            sys.exit(1)

@@ -94,3 +94,31 @@ void icon_draw_bolt(Canvas *canvas, Rect area, Color color)
         }
     }
 }
+
+
+static void bluetooth_line(Canvas *canvas, int x0, int y0, int x1, int y1, Color color)
+{
+    int dx = x1 > x0 ? x1 - x0 : x0 - x1;
+    int dy = y1 > y0 ? y1 - y0 : y0 - y1;
+    int steps = dx > dy ? dx : dy;
+    for (int i = 0; i <= steps; i++) {
+        int x = steps ? x0 + (x1 - x0) * i / steps : x0;
+        int y = steps ? y0 + (y1 - y0) * i / steps : y0;
+        canvas_fill_rect(canvas, (Rect){x, y, 1, 1}, color);
+    }
+}
+void icon_draw_bluetooth(Canvas *canvas, Rect area, Color color)
+{
+    int left = area.x + area.width / 5;
+    int mid = area.x + area.width / 2;
+    int right = area.x + area.width - 2;
+    int top = area.y;
+    int bottom = area.y + area.height - 1;
+    int upper = top + area.height / 4;
+    int lower = bottom - area.height / 4;
+    bluetooth_line(canvas, mid, top, mid, bottom, color);
+    bluetooth_line(canvas, mid, top, right, upper, color);
+    bluetooth_line(canvas, right, upper, left, lower, color);
+    bluetooth_line(canvas, left, upper, right, lower, color);
+    bluetooth_line(canvas, right, lower, mid, bottom, color);
+}

@@ -96,6 +96,25 @@ static bool write_both(const DacBus *bus, uint32_t map, uint8_t value)
     return true;
 }
 
+bool dac_headphone_detect_read(const DacBus *bus, uint8_t address,
+                               uint8_t *control, uint8_t *status)
+{
+    /* CS43198 DS1156F2 sections 4.4 and 7.5.11/12. Preserve inversion and
+     * debounce fields; enable only the detector. Do not read interrupt status
+     * registers here, since those reads clear unrelated sticky events. */
+    uint8_t config = 0, sample = 0;
+    if (!bus->read(bus->context, address, 0x0D0000, &config)) return false;
+    if ((config & 0xC0) != 0xC0) {
+        if (!bus->write(bus->context, address, 0x0D0000, (uint8_t)(config | 0xC0)) ||
+            !bus->read(bus->context, address, 0x0D0000, &config)) return false;
+    }
+    if ((config & 0xC0) != 0xC0 ||
+        !bus->read(bus->context, address, 0x0D0001, &sample)) return false;
+    *control = config;
+    *status = sample;
+    return true;
+}
+
 static bool write_all(const DacBus *bus, const Write *writes, size_t count)
 {
     for (size_t index = 0; index < count; index++) {

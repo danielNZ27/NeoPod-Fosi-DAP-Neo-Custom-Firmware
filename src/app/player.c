@@ -1,5 +1,7 @@
 #include "player.h"
 
+#include "hal/bluetooth.h"
+
 #include <stddef.h>
 
 #include "core/format.h"
@@ -37,6 +39,7 @@ static uint32_t new_token(Player *player)
 
 static void become_idle(Player *player)
 {
+    player->resume_on_reconnect = false;
     player->state = PLAYER_IDLE;
     player->loaded = false;
     player->has_next = false;
@@ -126,6 +129,7 @@ static bool start_current(Player *player, uint32_t start_ms)
         become_idle(player);
         return false;
     }
+    player->resume_on_reconnect = false;
     player->state = PLAYER_PLAYING;
     queue_upcoming(player);
     return true;
@@ -213,6 +217,9 @@ void player_init(Player *player, const Library *library)
     player->last_save_ms = 0;
     player->save_interval_ms = PLAYER_SAVE_INTERVAL_MS;
     player->jack = hal_audio_jack();
+    player->bluetooth_connected = hal_bluetooth_status()->state == HAL_BLUETOOTH_CONNECTED;
+    player->bluetooth_ready = player->bluetooth_connected && hal_bluetooth_status()->streaming;
+    player->resume_on_reconnect = false;
     player->refusal_count = 0;
     player->refusal = (HalAudioRefusal){.problem = HAL_AUDIO_PROBLEM_NONE};
     player->spoken = false;
@@ -255,6 +262,7 @@ bool player_play_from(Player *player, PlayerListStart start)
 
 void player_toggle_pause(Player *player)
 {
+    player->resume_on_reconnect = false;
     switch (player->state) {
     case PLAYER_PLAYING:
         hal_audio_pause();
@@ -469,6 +477,7 @@ bool player_jump_to_queue(Player *player, PlayQueueCursor cursor)
 
 void player_release_output(Player *player)
 {
+    player->resume_on_reconnect = false;
     if (!player->loaded) {
         return;
     }
@@ -490,12 +499,27 @@ static void save_periodically(Player *player, uint32_t now_ms)
     }
 }
 
-static void follow_jack(Player *player)
+static void follow_headphones(Player *player)
 {
     HalAudioJack jack = hal_audio_jack();
-    bool unplugged = player->jack != HAL_AUDIO_JACK_NONE && jack == HAL_AUDIO_JACK_NONE;
+    const HalBluetoothStatus *bluetooth = hal_bluetooth_status();
+    bool connected = bluetooth->state == HAL_BLUETOOTH_CONNECTED;
+    bool ready = connected && bluetooth->streaming;
+    bool wireless_lost = player->bluetooth_connected && !connected;
+    /* A wire change must not interrupt an active Bluetooth session. */
+    bool wire_lost = !player->bluetooth_connected && !connected &&
+                     player->jack != HAL_AUDIO_JACK_NONE && jack == HAL_AUDIO_JACK_NONE;
+    bool output_returned = (!player->bluetooth_ready && ready) ||
+                           (!connected && player->jack == HAL_AUDIO_JACK_NONE &&
+                            jack != HAL_AUDIO_JACK_NONE);
     player->jack = jack;
-    if (unplugged && player->state == PLAYER_PLAYING) {
+    player->bluetooth_connected = connected;
+    player->bluetooth_ready = ready;
+    if ((wireless_lost || wire_lost) && player->state == PLAYER_PLAYING) {
+        player_toggle_pause(player);
+        player->resume_on_reconnect = true;
+    }
+    if (output_returned && player->resume_on_reconnect && player->state == PLAYER_PAUSED) {
         player_toggle_pause(player);
     }
 }
@@ -507,7 +531,7 @@ void player_set_save_interval(Player *player, uint32_t interval_ms)
 
 void player_update(Player *player, uint32_t now_ms)
 {
-    follow_jack(player);
+    follow_headphones(player);
     if (!player->loaded) {
         return;
     }

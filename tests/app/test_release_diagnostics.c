@@ -26,11 +26,21 @@ static bool has_row(const MenuConfig *menu, const char *label)
 
 static void the_release_menu_keeps_only_the_safe_rows(void)
 {
+#ifdef ECHO_JACK_DIAGNOSTICS
+    static const char *const SAFE[] = {"DAC HP link", "DAC HP ctl", "DAC HP bits", "Jack raw",
+                                      "Jack pull bit", "GPIO estimate", "Raw changes", "Jack changes", "Firmware", "Battery"};
+#else
     static const char *const SAFE[] = {"Key test",   "Firmware",  "Battery",
                                        "Last start", "Last step", "Last USB",
-                                       "Jack 3.5",   "Jack 4.4",  "Last battery"};
+                                       "Jack 3.5",   "Headphones",  "Last battery"};
+#endif
     const MenuConfig *menu = built();
+#ifdef ECHO_JACK_DIAGNOSTICS
+    CHECK_EQUAL(10, menu->item_count);
+    CHECK_EQUAL(6, HOME_ITEM_COUNT);
+#else
     CHECK_EQUAL(9, menu->item_count);
+#endif
     for (size_t index = 0; index < sizeof SAFE / sizeof SAFE[0]; index++) {
         CHECK(has_row(menu, SAFE[index]));
     }
@@ -53,6 +63,17 @@ static void every_value_row_reads_without_a_selection(void)
     for (int index = 0; index < menu->item_count; index++) {
         const MenuItem *item = &menu->items[index];
         if (!item->opens) {
+#ifdef ECHO_JACK_DIAGNOSTICS
+            if (strcmp(item->label, "Jack pull bit") == 0) {
+                CHECK(item->select != NULL);
+                bool before = strcmp(item->value(item->context), "1") == 0;
+                item->select(item->context);
+                CHECK(before != (strcmp(item->value(item->context), "1") == 0));
+                item->select(item->context);
+                CHECK_EQUAL(before, strcmp(item->value(item->context), "1") == 0);
+                continue;
+            }
+#endif
             CHECK(item->select == NULL);
             CHECK(item->value != NULL);
             CHECK(item->value(item->context) != NULL);
