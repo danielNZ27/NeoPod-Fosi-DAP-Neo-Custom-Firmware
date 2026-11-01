@@ -39,7 +39,7 @@ Omit `--output` to update `release`. `build-neopod.ps1` also builds both helpers
 
 > **⚠️ Alpha:** macOS support is new and untested on physical hardware by the maintainer, who does not own a Mac. The build, parsers, and USB/ejection logic have automated test coverage only. **Please share your test results** (Mac model, macOS version, and the flasher log) in a GitHub issue so this can move out of alpha.
 
-**No Mac? Let GitHub build the app for your tester.** The `Build macOS flasher` workflow compiles both architectures, runs the tests, and uploads ready-to-test packages:
+**No Mac? Let GitHub build the app for your tester.** The `Build macOS flasher` workflow compiles both architectures, runs the tests, and uploads ready-to-test packages. Prebuilt alpha downloads are published at [v1.8.2-macos-alpha.1](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/tag/v1.8.2-macos-alpha.1); to build a new one:
 
 1. Open the repository's **Actions → Build macOS flasher → Run workflow** (or push a change to the flasher files).
 2. When the run finishes, download the artifact for the tester's Mac:

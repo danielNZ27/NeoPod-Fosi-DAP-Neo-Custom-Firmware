@@ -71,7 +71,7 @@ You can flash new firmware images directly using the Rockchip bootloader interfa
 
 See [all flash helper options and build instructions](docs/flash-neopod.md).
 
-> **⚠️ macOS is alpha.** The macOS flasher and `.app` are implemented but have not been tested on real Mac hardware by the maintainer (no Mac available). Please report your results, with the saved log, in a GitHub issue — testers are very welcome. Windows remains the supported production path. **To get a ready-to-send `.app`, run the `Build macOS flasher` workflow under Actions and download the `flash-neo-macos-apple-silicon` or `flash-neo-macos-intel` artifact.**
+> **⚠️ macOS is alpha.** The macOS flasher and `.app` are implemented but have not been tested on real Mac hardware by the maintainer (no Mac available). Please report your results, with the saved log, in a GitHub issue — testers are very welcome. Windows remains the supported production path. **Download ready-to-test builds from the [macOS alpha release](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases/tag/v1.8.2-macos-alpha.1), or rebuild them with the `Build macOS flasher` workflow under Actions.**
 
 ---
 
