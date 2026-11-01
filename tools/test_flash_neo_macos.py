@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -185,8 +186,9 @@ class MacDriveArgumentTests(unittest.TestCase):
 
     @unittest.skipUnless(IS_MACOS, "needs macOS st_dev comparison")
     def test_same_device_as_root_is_rejected(self):
+        directory = Mock(st_dev=7, st_mode=stat.S_IFDIR)
         with self.mac(), patch.object(flash.os.path, 'ismount', return_value=True), \
-                patch.object(flash.os, 'stat', return_value=Mock(st_dev=7)):
+                patch.object(flash.os, 'stat', return_value=directory):
             with self.assertRaisesRegex(ValueError, 'system volume'):
                 flash.checked_drive_root('/Volumes/NeoPod')
 
@@ -196,7 +198,7 @@ class MacLibusbLayoutTests(unittest.TestCase):
     def test_descriptor_layouts_match_libusb(self):
         import ctypes
         self.assertEqual(18, ctypes.sizeof(flash.LibusbDeviceDescriptor))
-        self.assertEqual(2, flash.LibusbDeviceDescriptor.idVendor.offset)
+        self.assertEqual(8, flash.LibusbDeviceDescriptor.idVendor.offset)
         self.assertEqual(2, flash.LibusbEndpointDescriptor.bEndpointAddress.offset)
         self.assertEqual(4, flash.LibusbEndpointDescriptor.wMaxPacketSize.offset)
         self.assertEqual(2, flash.LibusbConfigDescriptor.wTotalLength.offset)
