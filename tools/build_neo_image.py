@@ -7,14 +7,15 @@ import argparse
 import struct, sys, hashlib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "investigation/nanitecfw/tools"))
+TOOLS = Path(__file__).resolve().parent
+REPO = TOOLS.parent
+sys.path.insert(0, str(REPO / "third_party" / "nanitecfw"))
 from rknano_fw import Image, rkcrc, TABLE_OFF, ENTRY_FIELDS
-STOCK_IMG = ROOT / "DP3_V137.img"
-ELF_PATH = ROOT / "echopod/platform/neo_diag/neo_diag.elf"
-OUT_IMG = ROOT / "echopod/build/neo_diag/DP3_V138.IMG"
+STOCK_IMG = REPO / "assets" / "DP3_V137.img"
+ELF_PATH = REPO / "build" / "neo" / "platform" / "device" / "echo_device.elf"
+OUT_IMG = REPO / "release" / "DP3_V138.IMG"
 
-sys.path.insert(0, str(ROOT / "echopod/tools"))
+sys.path.insert(0, str(TOOLS))
 from make_image import firmware_from_elf, overlay_from_elf, crc32
 
 def build():

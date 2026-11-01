@@ -7,6 +7,8 @@ __pycache__/
 .venv/
 .venv-flasher/
 release/flash-neo.exe
+release/flash-neo.app/
+release/flash-neo-macos.zip
 log/
 
 release/RKNANOFW.IMG

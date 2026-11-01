@@ -25,7 +25,7 @@ A short map of the hardware EchoPod drives, for reading the code in `platform/de
 ## Audio
 
 - Cirrus Logic CS43131 DAC, set up over I2C0, fed by I2S1 through DMA from a ring in data RAM.
-- Neo has one 3.5 mm headphone output and no 4.4 mm jack. Owner testing confirmed GPIO0.13 **pull register bit 1** fixes wired unplug/replug detection; production v1.8.0 applies it on every boot. Bit 0 produced high fully plugged in and unstable high/low unplugged. The CS43198 HP detector reported the same 0x20 status plugged and unplugged when enabled (0xC4), so production does not use that experimental probe. GPIO2.8 is DAC mute and must never be configured as a jack input. GPIO2.4 is backlight PWM, explaining that bit's flicker in bank snapshots.
+- Neo has one 3.5 mm headphone output and no 4.4 mm jack. Owner testing confirmed GPIO0.13 **pull register bit 1** fixes wired unplug/replug detection; production v1.8.2 applies it on every boot. Bit 0 produced high fully plugged in and unstable high/low unplugged. The CS43198 HP detector reported the same 0x20 status plugged and unplugged when enabled (0xC4), so production does not use that experimental probe. GPIO2.8 is DAC mute and must never be configured as a jack input. GPIO2.4 is backlight PWM, explaining that bit's flicker in bank snapshots.
 - An LPC accelerator next to core 1 speeds up FLAC decoding.
 
 ## USB

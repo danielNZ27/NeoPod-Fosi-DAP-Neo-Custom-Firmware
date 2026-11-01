@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.8.2 — 2026-11-01
+
+Firmware image: `DP3_V182.IMG`. Production package: `NeoPod-v1.8.2.zip`.
+
+- Stop menu and list selection from wrapping. Pressing up on the first item or down on the last item now keeps the selection in place instead of jumping to the opposite end. Fast scrolling already stopped at the ends.
+- Retain the v1.8.0 wired-headphone pull-bit fix, production release settings, and both the graphical and Python updaters.
+
+**Upgrade:** extract the complete ZIP and flash `DP3_V182.IMG` with `flash-neo.exe` or `python flash-neo.py DP3_V182.IMG`. Settings, library, artwork and Bluetooth records are preserved; no rescan is needed.
+
 ## v1.8.0 — 2026-11-01
 
 Firmware image: `DP3_V180.IMG`. Production package: `NeoPod-v1.8.0.zip`.

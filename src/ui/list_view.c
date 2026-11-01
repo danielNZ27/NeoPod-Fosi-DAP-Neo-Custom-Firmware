@@ -80,7 +80,7 @@ void list_view_move(ListView *view, int delta, bool wrap, uint32_t now_ms)
 void list_view_start_scroll(ListView *view, int direction, uint32_t now_ms)
 {
     view->scroll_started_ms = now_ms;
-    list_view_move(view, direction, true, now_ms);
+    list_view_move(view, direction, false, now_ms);
 }
 
 static int section_at(const ListView *view, int index)

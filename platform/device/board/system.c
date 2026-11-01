@@ -36,9 +36,9 @@ const char *hal_system_version(void)
 {
 #ifdef ECHO_BOARD_NEO
 #ifdef ECHO_JACK_DIAGNOSTICS
-    return "NeoPod v1.8.0 Jack diag";
+    return "NeoPod v1.8.2 Jack diag";
 #else
-    return "NeoPod v1.8.0";
+    return "NeoPod v1.8.2";
 #endif
 #endif
     if (!tried) {

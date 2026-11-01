@@ -1,4 +1,4 @@
-"""NeoPod graphical Windows updater. The CLI remains in flash-neo.py."""
+"""NeoPod graphical updater for Windows and macOS. The CLI remains in flash-neo.py."""
 import contextlib
 import importlib.util
 import json
@@ -70,7 +70,7 @@ class Job(QThread):
 
 
 STYLE = """
-QWidget { background: #10151d; color: #edf2f7; font-family: 'Segoe UI'; font-size: 13px; }
+QWidget { background: #10151d; color: #edf2f7; font-family: '__FONT__'; font-size: 13px; }
 QLabel { background: transparent; }
 QFrame#sidebar { background: #151e29; border-right: 1px solid #293340; }
 QFrame#card { background: #19222e; border: 1px solid #2a3645; border-radius: 14px; }
@@ -94,8 +94,12 @@ QCheckBox::indicator:unchecked { background: #101821; border: 1px solid #61758b;
 QCheckBox::indicator:checked { background: #66e4c0; border: 1px solid #66e4c0; border-radius: 4px; image: none; }
 QProgressBar { background: #0f1720; border: none; border-radius: 4px; height: 8px; color: transparent; }
 QProgressBar::chunk { background: #66e4c0; border-radius: 4px; }
-QPlainTextEdit { background: #0d131b; border: 1px solid #293645; border-radius: 8px; color: #aebfd0; font-family: Consolas; font-size: 11px; padding: 8px; }
+QPlainTextEdit { background: #0d131b; border: 1px solid #293645; border-radius: 8px; color: #aebfd0; font-family: '__MONO__'; font-size: 11px; padding: 8px; }
 """
+
+UI_FONT = 'Helvetica Neue' if sys.platform == 'darwin' else 'Segoe UI'
+MONO_FONT = 'Menlo' if sys.platform == 'darwin' else 'Consolas'
+STYLE = STYLE.replace('__FONT__', UI_FONT).replace('__MONO__', MONO_FONT)
 
 
 def label(text, name=None, wrap=False):
@@ -128,7 +132,7 @@ class Window(QMainWindow):
         icon.fill(QColor('#66e4c0'))
         painter = QPainter(icon)
         painter.setPen(QColor('#10251f'))
-        painter.setFont(QFont('Segoe UI', 36, QFont.Weight.Bold))
+        painter.setFont(QFont(UI_FONT, 36, QFont.Weight.Bold))
         painter.drawText(icon.rect(), Qt.AlignmentFlag.AlignCenter, 'N')
         painter.end()
         self.setWindowIcon(QIcon(icon))
@@ -190,7 +194,9 @@ class Window(QMainWindow):
         layout.addWidget(label('SD card location (optional)', 'muted'))
         self.drive = QLineEdit()
         self.drive.setPlaceholderText('Automatic SD detection')
-        self.drive.setToolTip('Leave blank for automatic detection. Override only with the actual MicroSD drive root assigned by this PC.')
+        drive_hint = 'F:\\' if sys.platform == 'win32' else '/Volumes/NeoPod'
+        self.drive.setToolTip('Leave blank for automatic detection. Override only with the actual MicroSD volume root'
+                              f' assigned by this computer, for example {drive_hint}.')
         layout.addWidget(self.drive)
         body.addWidget(frame)
         self.package_status = label('The package is checked before connecting. No firmware is written until you select Start update on step 2.', 'muted', True)
@@ -470,6 +476,8 @@ class Window(QMainWindow):
 
 def main():
     app = QApplication([sys.argv[0]])
+    app.setApplicationName('NeoPod Firmware Studio')
+    app.setApplicationDisplayName('NeoPod Firmware Studio')
     app.setStyle('Fusion')
     app.setStyleSheet(STYLE)
     window = Window()
@@ -484,7 +492,7 @@ def main():
             window.grab().save(str(target.with_name(target.stem + '-step2.png')))
             window.show_page(2)
             window.grab().save(str(target.with_name(target.stem + '-step3.png')))
-            target.write_text(json.dumps({'image': window.image.text(), 'page_count': window.pages.count(), 'eject_enabled': window.eject.isEnabled(), 'console_visible': window.log.isVisible()}), encoding='utf-8')
+            target.write_text(json.dumps({'image': window.image.text(), 'page_count': window.pages.count(), 'eject_enabled': window.eject.isEnabled(), 'console_visible': window.log.isVisible(), 'usb_backend': backend.usb_backend_name()}), encoding='utf-8')
             app.quit()
         QTimer.singleShot(700, capture)
     sys.exit(app.exec())

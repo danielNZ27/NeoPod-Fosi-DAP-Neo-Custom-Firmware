@@ -1,11 +1,11 @@
-# Optional NeoPod v1.8.0 jack diagnostics (developer build)
+# Optional NeoPod v1.8.2 jack diagnostics (developer build)
 
-Production v1.8.0 has the owner-confirmed pull bit 1 fix and no diagnostic menu.
+Production v1.8.2 has the owner-confirmed pull bit 1 fix and no diagnostic menu.
 This optional developer build enables the **Diagnostics** entry and test controls.
 It retains the 150 ms removal / 1.2 s insertion filter and Bluetooth handling.
 
-Flash this variant's `DP3_V180.IMG` using the included graphical `flash-neo.exe`, or
-`python flash-neo.py DP3_V180.IMG`. Both helpers copy and verify the six matching
+Flash this variant's `DP3_V182.IMG` using the included graphical `flash-neo.exe`, or
+`python flash-neo.py DP3_V182.IMG`. Both helpers copy and verify the six matching
 SD companions. No library rescan is needed. Recovery entry uses the hardware
 buttons; the app shows a live red/green connection indicator. Post-flash reboot
 tries normal reset (0) first.

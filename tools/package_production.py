@@ -1,4 +1,4 @@
-"""Verify and package the v1.8.0 production release, including both flash tools."""
+"""Verify and package the v1.8.2 production release, including both flash tools."""
 import hashlib
 import importlib.util
 from pathlib import Path
@@ -9,14 +9,14 @@ import zipfile
 def main():
     root = Path(__file__).resolve().parents[1]
     release = root / 'release'
-    package = root / 'build' / 'NeoPod-v1.8.0'
+    package = root / 'build' / 'NeoPod-v1.8.2'
     spec = importlib.util.spec_from_file_location('flash_neo', root / 'flash-neo.py')
     helper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(helper)
-    image = release / 'DP3_V180.IMG'
+    image = release / 'DP3_V182.IMG'
     helper.checked_firmware_bytes(image)
     helper.companion_payload(image)
-    files = ['DP3_V180.IMG', 'SHA256SUMS.txt', 'FLASHER-SHA256SUMS.txt',
+    files = ['DP3_V182.IMG', 'SHA256SUMS.txt', 'FLASHER-SHA256SUMS.txt',
              'flash-neo.py', 'flash_neo_gui.py', 'flash-neo.exe']
     files += ['sd-card/.echo/' + name for name in helper.COMPANION_NAMES]
     for manifest in ('SHA256SUMS.txt', 'FLASHER-SHA256SUMS.txt'):
@@ -28,7 +28,7 @@ def main():
         target = package / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(release / name, target)
-    shutil.copy2(release / 'RELEASE-v1.8.0.md', package / 'README.md')
+    shutil.copy2(release / 'RELEASE-v1.8.2.md', package / 'README.md')
     # Include licenses and the GUI sources so the bundled open-source app can
     # be inspected and rebuilt. Firmware companion paths retain their dot folder.
     shutil.copy2(root / 'LICENSE', package / 'LICENSE')
@@ -43,7 +43,7 @@ def main():
         target = package / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(root / source, target)
-    archive = release / 'NeoPod-v1.8.0.zip'
+    archive = release / 'NeoPod-v1.8.2.zip'
     expected = set(files + ['README.md', 'LICENSE'] + list(extras))
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
         for name in sorted(expected):

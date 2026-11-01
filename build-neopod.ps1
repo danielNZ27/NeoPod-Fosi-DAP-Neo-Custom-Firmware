@@ -47,10 +47,10 @@ Run-Checked $objcopy @('-O', 'binary', "$build/platform/device/echo_core1.elf", 
 Run-Checked $objcopy @('-O', 'binary', "$build/platform/device/echo_core1_aac.elf", "$build/platform/device/core1_aac.bin")
 Run-Checked $objcopy @('-O', 'binary', "$build/platform/device/echo_core1_opus.elf", "$build/platform/device/core1_opus.bin")
 
-Write-Host "Packaging NeoPod firmware image DP3_V180.IMG..."
+Write-Host "Packaging NeoPod firmware image DP3_V182.IMG..."
 Run-Checked $FlasherPython @("$repoRoot/tools/build_boot_image.py", "$repoRoot/assets/boot.png", "$out/sd-card/.echo/boot.rgb565")
-Run-Checked $FlasherPython @("$repoRoot/tools/build_neo_image.py", '--version', '180',
-    '--elf', "$build/platform/device/echo_device.elf", '--output', "$out/DP3_V180.IMG",
+Run-Checked $FlasherPython @("$repoRoot/tools/build_neo_image.py", '--version', '182',
+    '--elf', "$build/platform/device/echo_device.elf", '--output', "$out/DP3_V182.IMG",
     '--overlay', "$build/platform/device/echo_rescan_overlay.elf",
     '--core1-mp3', "$build/platform/device/core1_mp3.bin",
     '--core1-flac', "$build/platform/device/core1.bin",
@@ -58,7 +58,7 @@ Run-Checked $FlasherPython @("$repoRoot/tools/build_neo_image.py", '--version', 
     '--core1-opus', "$build/platform/device/core1_opus.bin",
     '--sd-output', "$out/sd-card/.echo")
 
-$files = @(Get-Item -LiteralPath "$out/DP3_V180.IMG") + @(Get-ChildItem -LiteralPath "$out/sd-card/.echo" -File)
+$files = @(Get-Item -LiteralPath "$out/DP3_V182.IMG") + @(Get-ChildItem -LiteralPath "$out/sd-card/.echo" -File)
 $sums = foreach ($file in $files) {
     $relative = $file.FullName.Substring($out.Length + 1).Replace('\', '/')
     (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $relative
@@ -70,5 +70,5 @@ Run-Checked $FlasherPython @("$repoRoot/tools/build_flash_neo.py", '--output', $
 Run-Checked $FlasherPython @("$repoRoot/tools/package_production.py")
 
 Write-Host "Build Complete!"
-Write-Host "Firmware Image: $out/DP3_V180.IMG"
+Write-Host "Firmware Image: $out/DP3_V182.IMG"
 Write-Host "Companion Decoders: $out/sd-card/.echo/"

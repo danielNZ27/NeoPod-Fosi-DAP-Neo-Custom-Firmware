@@ -6,7 +6,7 @@ $cmake = "$workspace/toolchains/python/cmake/data/bin/cmake.exe"
 $objcopy = "$workspace/toolchains/bin/arm-none-eabi-objcopy.exe"
 $env:PATH = "$workspace/toolchains/bin;" + $env:PATH
 $build = "$repo/build/neo-jack-diagnostics"
-$out = "$repo/build/NeoPod-v1.8.0-jack-diagnostics"
+$out = "$repo/build/NeoPod-v1.8.2-jack-diagnostics"
 function Run-Checked([string]$Program, [string[]]$Arguments) {
     & $Program @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$Program failed ($LASTEXITCODE)" }
@@ -24,13 +24,13 @@ foreach ($decoder in @{'echo_core1_mp3'='core1_mp3'; 'echo_core1'='core1'; 'echo
     Run-Checked $objcopy @('-O', 'binary', "$build/platform/device/$($decoder.Key).elf", "$build/platform/device/$($decoder.Value).bin")
 }
 Run-Checked $FlasherPython @("$repo/tools/build_boot_image.py", "$repo/assets/boot.png", "$out/sd-card/.echo/boot.rgb565")
-Run-Checked $FlasherPython @("$repo/tools/build_neo_image.py", '--version', '180',
-    '--elf', "$build/platform/device/echo_device.elf", '--output', "$out/DP3_V180.IMG",
+Run-Checked $FlasherPython @("$repo/tools/build_neo_image.py", '--version', '182',
+    '--elf', "$build/platform/device/echo_device.elf", '--output', "$out/DP3_V182.IMG",
     '--overlay', "$build/platform/device/echo_rescan_overlay.elf",
     '--core1-mp3', "$build/platform/device/core1_mp3.bin", '--core1-flac', "$build/platform/device/core1.bin",
     '--core1-aac', "$build/platform/device/core1_aac.bin", '--core1-opus', "$build/platform/device/core1_opus.bin",
     '--sd-output', "$out/sd-card/.echo")
-$files = @(Get-Item -LiteralPath "$out/DP3_V180.IMG") + @(Get-ChildItem -LiteralPath "$out/sd-card/.echo" -File)
+$files = @(Get-Item -LiteralPath "$out/DP3_V182.IMG") + @(Get-ChildItem -LiteralPath "$out/sd-card/.echo" -File)
 $sums = foreach ($file in $files) {
     $relative = $file.FullName.Substring($out.Length + 1).Replace('\', '/')
     (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $relative

@@ -1,0 +1,96 @@
+name: Build macOS flasher
+
+# PyInstaller cannot cross-compile a .app, so GitHub's macOS runners build the
+# two double-clickable test builds. Download them from the run's Artifacts
+# section: flash-neo-macos-apple-silicon.zip or flash-neo-macos-intel.zip.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'flash-neo.py'
+      - 'flash_neo_gui.py'
+      - 'tools/build_flash_neo_macos.py'
+      - 'tools/test_flash_neo*.py'
+      - 'tools/requirements-flasher.txt'
+      - '.github/workflows/build-macos-flasher.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: apple-silicon
+            runner: macos-15
+          - arch: intel
+            runner: macos-15-intel
+    env:
+      # The unit tests only render widgets; never require a logged-in GUI session.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install libusb
+        run: brew install libusb
+
+      - name: Install flasher dependencies
+        run: python -m pip install --disable-pip-version-check -r tools/requirements-flasher.txt
+
+      - name: Test and build flash-neo.app
+        run: python tools/build_flash_neo_macos.py --output "build/NeoPod-macos-${{ matrix.arch }}"
+
+      - name: Assemble ready-to-test package
+        run: |
+          set -euo pipefail
+          OUT="build/NeoPod-macos-${{ matrix.arch }}"
+          PKG="build/NeoPod-macos-${{ matrix.arch }}-test"
+          IMAGE="$(find release -maxdepth 1 -name 'DP3_V*.IMG' -print | sort -V | tail -1)"
+          test -n "$IMAGE"
+          test -f release/SHA256SUMS.txt
+          test -d release/sd-card/.echo
+          rm -rf "$PKG"
+          mkdir -p "$PKG"
+          cp "$IMAGE" release/SHA256SUMS.txt "$PKG"/
+          cp -R release/sd-card "$PKG"/
+          ditto "$OUT/flash-neo.app" "$PKG/flash-neo.app"
+          ditto -c -k --sequesterRsrc --keepParent "$PKG" \
+            "build/NeoPod-macos-${{ matrix.arch }}-ready-to-test.zip"
+          ls -lh "build/NeoPod-macos-${{ matrix.arch }}-ready-to-test.zip"
+
+      - name: Upload macOS test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: flash-neo-macos-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            build/NeoPod-macos-${{ matrix.arch }}-ready-to-test.zip
+            build/NeoPod-macos-${{ matrix.arch }}/flash-neo-macos.zip
+            build/NeoPod-macos-${{ matrix.arch }}/FLASHER-SHA256SUMS-macos.txt
+            build/NeoPod-macos-${{ matrix.arch }}/flash-neo.py
+            build/NeoPod-macos-${{ matrix.arch }}/flash_neo_gui.py
+
+      - name: Summarize artifact
+        run: |
+          {
+            echo "### macOS ${{ matrix.arch }} build"
+            echo ""
+            echo "Download **flash-neo-macos-${{ matrix.arch }}** from the Artifacts section of this run."
+            echo "Unzip **NeoPod-macos-${{ matrix.arch }}-ready-to-test.zip**, then Control-click \`flash-neo.app\` and choose **Open**."
+            echo "It already contains the firmware image, \`SHA256SUMS.txt\`, and \`sd-card/.echo/\` beside the app."
+            echo ""
+            echo '```'
+            cat "build/NeoPod-macos-${{ matrix.arch }}/FLASHER-SHA256SUMS-macos.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

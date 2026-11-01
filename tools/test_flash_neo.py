@@ -4,19 +4,21 @@ import hashlib
 import importlib.util
 import io
 import os
-from pathlib import Path
 import struct
+import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
-if os.name == "nt":
+SUPPORTED = os.name == "nt" or sys.platform == "darwin"
+if SUPPORTED:
     spec = importlib.util.spec_from_file_location("flash_neo", Path(__file__).parents[1] / "flash-neo.py")
     flash = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(flash)
 
 
-@unittest.skipUnless(os.name == "nt", "Windows Rockusb script")
+@unittest.skipUnless(SUPPORTED, "Windows/macOS Rockusb script")
 class ImageDiscoveryTests(unittest.TestCase):
     def test_frozen_image_is_beside_exe_not_extracted_script_or_cwd(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -32,6 +34,18 @@ class ImageDiscoveryTests(unittest.TestCase):
                  patch.object(flash, '__file__', str(extracted / 'flash-neo.py')):
                 self.assertEqual(expected.resolve(), flash.default_image())
 
+    def test_macos_app_bundle_finds_firmware_beside_the_app(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory) / 'package'
+            executable = package / 'flash-neo.app' / 'Contents' / 'MacOS' / 'flash-neo'
+            executable.parent.mkdir(parents=True)
+            expected = package / 'DP3_V175.IMG'
+            expected.touch()
+            with patch.object(flash.sys, 'frozen', True, create=True), \
+                 patch.object(flash.sys, 'executable', str(executable)), \
+                 patch.object(flash, 'IS_MACOS', True):
+                self.assertEqual(expected.resolve(), flash.default_image())
+
     def test_python_still_discovers_highest_release_image(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -44,7 +58,7 @@ class ImageDiscoveryTests(unittest.TestCase):
                 self.assertEqual(expected.resolve(), flash.default_image())
 
 
-@unittest.skipUnless(os.name == "nt", "Windows recovery connection")
+@unittest.skipUnless(SUPPORTED, "Windows/macOS recovery connection")
 class RecoveryConnectionTests(unittest.TestCase):
     def test_live_interface_is_required(self):
         with patch.object(flash, 'device_path', return_value='mock'), patch.object(flash, 'recovery_interface_present', return_value=True):
@@ -60,20 +74,38 @@ class RecoveryConnectionTests(unittest.TestCase):
                 self.assertIsNone(flash.live_recovery_path())
 
 
-@unittest.skipUnless(os.name == "nt", "Windows Rockusb script")
+class FakeUsb(flash.RockusbProtocol):
+    """Record protocol packets without touching a device."""
+
+    def __init__(self, responses=()):
+        super().__init__()
+        self.writes = []
+        self.responses = list(responses)
+        self.closed = 0
+
+    def _write(self, data):
+        self.writes.append(data)
+
+    def _read(self, length):
+        return self.responses.pop(0)
+
+    def close(self):
+        self.closed += 1
+
+
+@unittest.skipUnless(SUPPORTED, "Windows/macOS Rockusb script")
 class ResetTests(unittest.TestCase):
     def usb(self):
-        usb = flash.Rockusb.__new__(flash.Rockusb)
-        usb.tag, usb.h, usb.write_h = 100, 123, 456
+        usb = FakeUsb()
+        usb.tag = 100
         return usb
 
     def test_reset_packet_and_status_for_documented_boot_modes(self):
         for subcode in (0, 1, 4):
             usb = self.usb()
-            status = struct.pack('<IIIB', 0x53425355, 101, 0, 0)
-            with patch.object(flash, 'transfer', side_effect=[b'', status]) as transfer:
-                usb.reset(subcode)
-            packet = transfer.call_args_list[0].args[1]
+            usb.responses.append(struct.pack('<IIIB', 0x53425355, 101, 0, 0))
+            usb.reset(subcode)
+            packet = usb.writes[0]
             self.assertEqual(31, len(packet))
             self.assertEqual((0x43425355, 101, 0, 0, 0, 6), struct.unpack('<IIIBBB', packet[:15]))
             self.assertEqual(bytes([0xFF, subcode]) + bytes(14), packet[15:])
@@ -87,14 +119,16 @@ class ResetTests(unittest.TestCase):
         for status in (b'', struct.pack('<IIIB', 0x53425355, 101, 0, 1),
                        struct.pack('<IIIB', 0x53425355, 999, 0, 0),
                        struct.pack('<IIIB', 0x53425355, 101, 1, 0)):
-            with patch.object(flash, 'transfer', side_effect=[b'', status]):
-                with self.assertRaises(RuntimeError):
-                    self.usb().reset()
+            usb = self.usb()
+            usb.responses.append(status)
+            with self.assertRaises(RuntimeError):
+                usb.reset()
 
     def test_failed_reset_write_is_not_hidden(self):
-        with patch.object(flash, 'transfer', side_effect=OSError('write failed')):
+        usb = self.usb()
+        with patch.object(usb, '_write', side_effect=OSError('write failed')):
             with self.assertRaises(OSError):
-                self.usb().reset()
+                usb.reset()
 
     def test_disconnect_before_status_still_waits_for_live_confirmation(self):
         usb = Mock()
@@ -121,16 +155,18 @@ class ResetTests(unittest.TestCase):
             self.assertTrue(flash.wait_recovery_disconnect('mock'))
         self.assertEqual(5, probe.call_count)
 
+    @unittest.skipUnless(os.name == "nt", "Windows handle close")
     def test_close_is_idempotent(self):
-        usb = self.usb()
+        usb = flash.Rockusb.__new__(flash.Rockusb)
+        usb.tag, usb.h, usb.write_h = 100, 123, 456
         with patch.object(flash.k, 'CloseHandle') as close:
             usb.close()
             usb.close()
             self.assertEqual(2, close.call_count)
 
 
-@unittest.skipUnless(os.name == "nt", "Windows flash helper")
-class CompanionTests(unittest.TestCase):
+@unittest.skipUnless(SUPPORTED, "Windows/macOS flash helper")
+class PackageTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -211,7 +247,7 @@ class CompanionTests(unittest.TestCase):
             flash.wait_for_sd()
 
     def test_mount_timeout_copies_nothing(self):
-        with patch.object(flash.time, 'monotonic', side_effect=[0, 2]), contextlib.redirect_stdout(io.StringIO()), self.assertRaises(TimeoutError):
+        with patch.object(flash, 'neopod_sd_drives', return_value=[]), patch.object(flash.time, 'monotonic', side_effect=[0, 2]), contextlib.redirect_stdout(io.StringIO()), self.assertRaises(TimeoutError):
             flash.wait_for_sd(timeout=1)
         self.assertFalse((self.card / '.echo').exists())
 
@@ -260,11 +296,14 @@ class CompanionTests(unittest.TestCase):
         mounted.assert_not_called()
         usb.close.assert_called_once()
 
-    def test_system_drive_or_subdirectory_is_rejected(self):
-        with self.assertRaises(ValueError):
-            flash.checked_drive_root(Path(os.environ.get('SystemDrive', 'C:') + '/'))
-        with self.assertRaises(ValueError):
-            flash.checked_drive_root(self.card)
+
+@unittest.skipUnless(SUPPORTED, "Windows/macOS flash helper")
+class EjectPromptTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.card = Path(self.temp.name) / 'mounted-card'
+        self.card.mkdir()
 
     def test_enter_ejects_and_closing_input_leaves_mounted(self):
         with patch('builtins.input', return_value=''), patch.object(flash, 'eject_player') as eject:
@@ -274,6 +313,27 @@ class CompanionTests(unittest.TestCase):
             with patch('builtins.input', side_effect=problem), patch.object(flash, 'eject_player') as eject, contextlib.redirect_stdout(io.StringIO()):
                 flash.prompt_to_eject(self.card)
             eject.assert_not_called()
+
+    def test_ejection_failure_is_not_reported_as_safe_to_unplug(self):
+        with patch('builtins.input', return_value=''), patch.object(flash, 'eject_player', side_effect=RuntimeError('the system refused safe removal')), contextlib.redirect_stdout(io.StringIO()) as output:
+            flash.prompt_to_eject(self.card)
+        self.assertIn('[NOT EJECTED]', output.getvalue())
+        self.assertNotIn('[EJECTED]', output.getvalue())
+
+
+@unittest.skipUnless(os.name == "nt", "Windows drive and ejection helpers")
+class WindowsDriveTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.card = Path(self.temp.name) / 'mounted-card'
+        self.card.mkdir()
+
+    def test_system_drive_or_subdirectory_is_rejected(self):
+        with self.assertRaises(ValueError):
+            flash.checked_drive_root(Path(os.environ.get('SystemDrive', 'C:') + '/'))
+        with self.assertRaises(ValueError):
+            flash.checked_drive_root(self.card)
 
     def test_eject_targets_only_the_matched_neopod_usb_parent(self):
         instance = r'USB\VID_1209&PID_0001\TESTSERIAL'
@@ -285,12 +345,6 @@ class CompanionTests(unittest.TestCase):
         with patch.object(flash, 'neopod_sd_drives', return_value=disks), patch.object(flash, 'request_device_eject') as eject, self.assertRaises(RuntimeError):
             flash.eject_player(self.card)
         eject.assert_not_called()
-
-    def test_windows_veto_is_not_reported_as_safe_to_unplug(self):
-        with patch('builtins.input', return_value=''), patch.object(flash, 'eject_player', side_effect=RuntimeError('Windows refused safe removal')), contextlib.redirect_stdout(io.StringIO()) as output:
-            flash.prompt_to_eject(self.card)
-        self.assertIn('[NOT EJECTED]', output.getvalue())
-        self.assertNotIn('[EJECTED]', output.getvalue())
 
     def test_eject_api_rejection_propagates(self):
         cfg = Mock()

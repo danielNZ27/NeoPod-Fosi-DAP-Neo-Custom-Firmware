@@ -69,13 +69,24 @@ static void next_and_previous_move_the_selection(void)
     CHECK_EQUAL(1, view.selected);
 }
 
-static void a_press_wraps_but_a_repeat_does_not(void)
+static void a_press_at_the_end_stays_on_the_last_item(void)
 {
     ListView view = fresh_list();
     send(&view, KEY_VOLUME_DOWN, KEY_GESTURE_REPEAT);
     CHECK_EQUAL(0, view.selected);
-    send(&view, KEY_VOLUME_DOWN, KEY_GESTURE_PRESS);
+    for (int step = 0; step < ITEM_COUNT; step++) {
+        send(&view, KEY_VOLUME_UP, KEY_GESTURE_PRESS);
+    }
     CHECK_EQUAL(ITEM_COUNT - 1, view.selected);
+    send(&view, KEY_VOLUME_UP, KEY_GESTURE_PRESS);
+    CHECK_EQUAL(ITEM_COUNT - 1, view.selected);
+}
+
+static void a_press_at_the_start_stays_on_the_first_item(void)
+{
+    ListView view = fresh_list();
+    send(&view, KEY_VOLUME_DOWN, KEY_GESTURE_PRESS);
+    CHECK_EQUAL(0, view.selected);
 }
 
 static void select_hands_the_selected_index_to_the_owner(void)
@@ -119,7 +130,8 @@ int main(void)
 {
     static const TestCase cases[] = {
         TEST_CASE(next_and_previous_move_the_selection),
-        TEST_CASE(a_press_wraps_but_a_repeat_does_not),
+        TEST_CASE(a_press_at_the_end_stays_on_the_last_item),
+        TEST_CASE(a_press_at_the_start_stays_on_the_first_item),
         TEST_CASE(select_hands_the_selected_index_to_the_owner),
         TEST_CASE(holding_play_hands_the_index_to_the_hold_action),
         TEST_CASE(holding_play_without_a_hold_action_does_nothing),
