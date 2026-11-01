@@ -101,7 +101,9 @@ def main():
         run(str(smoke_app / 'Contents' / 'MacOS' / 'flash-neo'),
             '--smoke-test', str(report), cwd=directory, timeout=120, env=smoke_env)
         result = json.loads(report.read_text(encoding='utf-8'))
-        if (Path(result['image']) != image or result['page_count'] != 3
+        # macOS resolves /var/... to /private/var/..., so compare real paths.
+        if (Path(result['image']).resolve() != image.resolve()
+                or result['page_count'] != 3
                 or result['eject_enabled'] or not result['console_visible']
                 or not result.get('usb_backend')):
             raise RuntimeError(f'GUI startup/discovery smoke test failed: {result}')
