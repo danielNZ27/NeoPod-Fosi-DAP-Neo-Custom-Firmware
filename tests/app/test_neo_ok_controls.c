@@ -12,6 +12,7 @@
 #include <stdio.h>
 
 static uint32_t now;
+static bool locked(void);
 static FixtureLibrary fixture;
 
 static void advance(uint32_t milliseconds)
@@ -25,6 +26,28 @@ static void tap(Key key)
 {
     fake_hal_queue_transition(key, true, now);
     fake_hal_queue_transition(key, false, now + 30);
+    advance(40);
+}
+
+static void power_tap(void)
+{
+    tap(KEY_POWER);
+    advance(400);
+}
+
+static void quick_power_taps(int count)
+{
+    for (int i = 0; i < count; i++) {
+        tap(KEY_POWER);
+        advance(60);
+    }
+}
+
+static void hold(Key key, uint32_t milliseconds)
+{
+    fake_hal_queue_transition(key, true, now);
+    for (uint32_t held = 0; held < milliseconds; held += 20) advance(20);
+    fake_hal_queue_transition(key, false, now);
     advance(40);
 }
 
@@ -48,56 +71,118 @@ static void setup(void)
     CHECK_EQUAL(0, app_player_status().track);
 }
 
-static void dark_double_ok_skips_once_without_a_pause_or_wake(void)
+static void single_power_tap_waits_for_the_tap_window_then_toggles_the_screen(void)
 {
     setup();
+    advance(20);
+    CHECK(fake_hal_display_on());
     tap(KEY_POWER);
+    advance(200);
+    CHECK(fake_hal_display_on());
+    advance(200);
     CHECK(!fake_hal_display_on());
-    tap(KEY_PLAY);
-    advance(350);
-    CHECK_EQUAL(PLAYER_PLAYING, app_player_status().state);
-    int depth = app_screen_depth();
-    tap(KEY_PLAY);
-    advance(80);
-    CHECK_EQUAL(PLAYER_PLAYING, app_player_status().state);
     CHECK_EQUAL(0, app_player_status().track);
-    tap(KEY_PLAY);
-    CHECK_EQUAL(1, app_player_status().track);
-    CHECK_EQUAL(PLAYER_PLAYING, app_player_status().state);
-    CHECK(!fake_hal_display_on());
-    CHECK_EQUAL(depth, app_screen_depth());
-    advance(350);
-    CHECK_EQUAL(1, app_player_status().track);
-    CHECK_EQUAL(PLAYER_PLAYING, app_player_status().state);
 }
 
-static void dark_single_ok_still_toggles_pause(void)
+static void double_power_tap_skips_forward_without_touching_the_screen(void)
 {
     setup();
-    tap(KEY_POWER);
+    quick_power_taps(2);
+    advance(400);
+    CHECK_EQUAL(1, app_player_status().track);
+    CHECK(fake_hal_display_on());
+    CHECK(!locked());
+
+    setup();
+    power_tap();
+    CHECK(!fake_hal_display_on());
+    quick_power_taps(2);
+    advance(400);
+    CHECK_EQUAL(1, app_player_status().track);
+    CHECK(!fake_hal_display_on());
+}
+
+static void triple_power_tap_goes_back_immediately(void)
+{
+    setup();
+    quick_power_taps(2);
+    advance(400);
+    CHECK_EQUAL(1, app_player_status().track);
+    power_tap();
+    CHECK(!fake_hal_display_on());
+    fake_hal_audio_set_position(0);
+    quick_power_taps(3);
+    CHECK_EQUAL(0, app_player_status().track);
+    advance(400);
+    CHECK_EQUAL(0, app_player_status().track);
+    CHECK(!fake_hal_display_on());
+}
+
+static void slow_power_taps_count_separately(void)
+{
+    setup();
+    power_tap();
+    CHECK(!fake_hal_display_on());
+    power_tap();
+    CHECK(fake_hal_display_on());
+    CHECK(locked());
+    CHECK_EQUAL(0, app_player_status().track);
+}
+
+static void holding_power_still_shuts_down(void)
+{
+    setup();
+    hold(KEY_POWER, 2100);
+    advance(2000);
+    CHECK_EQUAL(0, app_player_status().track);
+    CHECK(fake_hal_power_off_count() > 0);
+}
+
+static void centre_tap_selects_without_waiting(void)
+{
+    setup();
+    int depth = app_screen_depth();
     tap(KEY_PLAY);
-    advance(350);
+    CHECK_EQUAL(depth + 1, app_screen_depth());
+}
+
+static void dark_centre_taps_toggle_pause_and_never_skip(void)
+{
+    setup();
+    power_tap();
+    tap(KEY_PLAY);
     CHECK_EQUAL(PLAYER_PLAYING, app_player_status().state);
     tap(KEY_PLAY);
-    advance(350);
     CHECK_EQUAL(PLAYER_PAUSED, app_player_status().state);
     CHECK_EQUAL(0, app_player_status().track);
     CHECK(!fake_hal_display_on());
 }
 
-static void lit_double_ok_still_goes_back_without_skipping(void)
+static void centre_hold_goes_back(void)
 {
     setup();
     tap(KEY_PLAY);
-    advance(350);
-    CHECK(app_screen_depth() > 1);
     int depth = app_screen_depth();
-    tap(KEY_PLAY);
-    advance(80);
-    tap(KEY_PLAY);
+    CHECK(depth > 1);
+    hold(KEY_PLAY, 800);
     CHECK_EQUAL(depth - 1, app_screen_depth());
     CHECK_EQUAL(0, app_player_status().track);
-    CHECK(fake_hal_display_on());
+}
+
+static void long_centre_hold_starts_scrubbing_in_now_playing(void)
+{
+    setup();
+    tap(KEY_PLAY);
+    CHECK(strcmp("Now Playing", app_screen_title()) == 0);
+    int depth = app_screen_depth();
+    hold(KEY_PLAY, 1700);
+    CHECK_EQUAL(depth, app_screen_depth());
+    CHECK(strcmp("Now Playing", app_screen_title()) == 0);
+    hold(KEY_PLAY, 800);
+    CHECK_EQUAL(depth, app_screen_depth());
+    CHECK(strcmp("Now Playing", app_screen_title()) == 0);
+    hold(KEY_PLAY, 800);
+    CHECK_EQUAL(depth - 1, app_screen_depth());
 }
 
 static bool locked(void)
@@ -113,8 +198,8 @@ static void wheel_steps(int count)
 static void wake_requires_forty_wheel_steps_and_blocks_other_controls(void)
 {
     setup();
-    tap(KEY_POWER);
-    tap(KEY_POWER);
+    power_tap();
+    power_tap();
     CHECK(fake_hal_display_on());
     CHECK(locked());
     uint8_t volume = app_player_status().volume;
@@ -137,8 +222,8 @@ static void wake_requires_forty_wheel_steps_and_blocks_other_controls(void)
 static void inactivity_resets_visible_progress_and_requires_a_new_full_turn(void)
 {
     setup();
-    tap(KEY_POWER);
-    tap(KEY_POWER);
+    power_tap();
+    power_tap();
     wheel_steps(20);
     CHECK_EQUAL(DEFAULT_THEME.colors.selection_background, fake_hal_pixel(31, 240));
     advance(1500);
@@ -153,16 +238,16 @@ static void inactivity_resets_visible_progress_and_requires_a_new_full_turn(void
 static void power_can_sleep_a_locked_screen_and_dark_media_controls_still_work(void)
 {
     setup();
-    tap(KEY_POWER);
-    tap(KEY_POWER);
+    power_tap();
+    power_tap();
     wheel_steps(10);
-    tap(KEY_POWER);
+    power_tap();
     CHECK(!fake_hal_display_on());
-    tap(KEY_PLAY);
-    tap(KEY_PLAY);
+    quick_power_taps(2);
+    advance(400);
     CHECK_EQUAL(1, app_player_status().track);
     CHECK(!fake_hal_display_on());
-    tap(KEY_POWER);
+    power_tap();
     CHECK(locked());
     wheel_steps(30);
     CHECK(locked());
@@ -217,7 +302,7 @@ static void side_button_preference_controls_tracks_in_light_and_dark_but_not_on_
     fake_hal_audio_set_position(0);
     tap(KEY_VOLUME_DOWN);
     CHECK_EQUAL(0, app_player_status().track);
-    tap(KEY_POWER);
+    power_tap();
     tap(KEY_VOLUME_UP);
     CHECK_EQUAL(1, app_player_status().track);
     CHECK(!fake_hal_display_on());
@@ -232,7 +317,7 @@ static void side_button_preference_controls_tracks_in_light_and_dark_but_not_on_
     fake_hal_queue_transition(KEY_VOLUME_UP, false, now);
     advance(40);
     CHECK_EQUAL(1, app_player_status().track);
-    tap(KEY_POWER);
+    power_tap();
     CHECK(locked());
     fake_hal_audio_set_position(0);
     tap(KEY_VOLUME_DOWN);
@@ -249,7 +334,7 @@ static void default_side_buttons_still_adjust_volume(void)
     CHECK_EQUAL(0, app_player_status().track);
     tap(KEY_VOLUME_DOWN);
     CHECK_EQUAL(volume, app_player_status().volume);
-    tap(KEY_POWER);
+    power_tap();
     tap(KEY_VOLUME_UP);
     CHECK_EQUAL(volume + 1, app_player_status().volume);
     CHECK_EQUAL(0, app_player_status().track);
@@ -284,7 +369,7 @@ static void hybrid_taps_skip_and_holds_change_volume_without_a_release_skip(void
     CHECK_EQUAL(0, app_player_status().track);
     CHECK_EQUAL(volume + 2, app_player_status().volume);
 
-    tap(KEY_POWER);
+    power_tap();
     fake_hal_queue_transition(KEY_VOLUME_DOWN, true, now);
     advance(1000);
     advance(150);
@@ -298,7 +383,7 @@ static void hybrid_taps_skip_and_holds_change_volume_without_a_release_skip(void
     CHECK_EQUAL(volume, app_player_status().volume);
     CHECK(!fake_hal_display_on());
 
-    tap(KEY_POWER);
+    power_tap();
     CHECK(locked());
     fake_hal_audio_set_position(0);
     tap(KEY_VOLUME_DOWN);
@@ -361,9 +446,15 @@ int main(int argc, char **argv)
         TEST_CASE(inactivity_resets_visible_progress_and_requires_a_new_full_turn),
         TEST_CASE(power_can_sleep_a_locked_screen_and_dark_media_controls_still_work),
         TEST_CASE(idle_deadline_and_real_wheel_presses_control_the_progress),
-        TEST_CASE(dark_double_ok_skips_once_without_a_pause_or_wake),
-        TEST_CASE(dark_single_ok_still_toggles_pause),
-        TEST_CASE(lit_double_ok_still_goes_back_without_skipping),
+        TEST_CASE(single_power_tap_waits_for_the_tap_window_then_toggles_the_screen),
+        TEST_CASE(double_power_tap_skips_forward_without_touching_the_screen),
+        TEST_CASE(triple_power_tap_goes_back_immediately),
+        TEST_CASE(slow_power_taps_count_separately),
+        TEST_CASE(holding_power_still_shuts_down),
+        TEST_CASE(centre_tap_selects_without_waiting),
+        TEST_CASE(dark_centre_taps_toggle_pause_and_never_skip),
+        TEST_CASE(centre_hold_goes_back),
+        TEST_CASE(long_centre_hold_starts_scrubbing_in_now_playing),
     };
     int result = test_run_all(cases, TEST_CASE_COUNT(cases));
     if (argc == 3) {

@@ -114,8 +114,14 @@ typedef struct AppState {
 
 static AppState app;
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
-static bool ok_pending;
-static uint32_t ok_deadline;
+enum {
+    POWER_TAP_WINDOW_MS = 350,
+    POWER_TAPS_MAX = 3,
+    PLAY_OPTIONS_HOLD_MS = 1500
+};
+static uint8_t power_taps;
+static uint32_t power_tap_deadline;
+static bool play_hold_pending;
 #endif
 
 static const FadeTiming SPLASH_TIMING = {.fade_ms = 600, .hold_ms = 500, .rising = true};
@@ -385,46 +391,86 @@ static void dispatch_event(KeyEvent event, uint32_t now_ms)
     }
 }
 
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+static void finish_power_taps(uint32_t now_ms)
+{
+    uint8_t taps = power_taps;
+    power_taps = 0;
+    if (taps == 0 || app.powered_off) {
+        return;
+    }
+    if (taps == 1) {
+        dispatch_event((KeyEvent){KEY_POWER, KEY_GESTURE_PRESS}, now_ms);
+        return;
+    }
+    app.power.last_activity_ms = now_ms;
+    power_policy_stay_awake(&app.power, now_ms);
+    player_skip(&app.player, taps == 2 ? 1 : -1);
+}
+
+static void service_neo_gestures(uint32_t now_ms)
+{
+    if (power_taps != 0 && deadline_reached(now_ms, power_tap_deadline)) {
+        finish_power_taps(now_ms);
+    }
+    if (!play_hold_pending || app.powered_off) {
+        return;
+    }
+    const KeyState *play = &app.keys.states[KEY_PLAY];
+    if (!play->held) {
+        play_hold_pending = false;
+        dispatch_event((KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, now_ms);
+    } else if (deadline_reached(now_ms, play->pressed_at_ms + PLAY_OPTIONS_HOLD_MS)) {
+        play_hold_pending = false;
+        dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_LONG_PRESS}, now_ms);
+    }
+}
+
+static bool take_neo_gesture(KeyEvent event, uint32_t now_ms)
+{
+    if (event.key == KEY_POWER && event.gesture == KEY_GESTURE_PRESS &&
+        !app.options.ignore_power_taps) {
+        power_taps++;
+        power_tap_deadline = now_ms + POWER_TAP_WINDOW_MS;
+        if (power_taps == POWER_TAPS_MAX) {
+            finish_power_taps(now_ms);
+        }
+        return true;
+    }
+    if (event.key == KEY_POWER) {
+        power_taps = 0;
+        return false;
+    }
+    finish_power_taps(now_ms);
+    if (event.key == KEY_PLAY && event.gesture == KEY_GESTURE_LONG_PRESS) {
+        play_hold_pending = true;
+        return true;
+    }
+    return false;
+}
+#endif
+
 static void dispatch_key_events(uint32_t now_ms)
 {
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+    service_neo_gestures(now_ms);
+#endif
     KeyEvent event;
     while (!app.powered_off && key_tracker_next_event(&app.keys, &event)) {
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
         if (app.wheel_lock.active && app.power.display_on && event.key != KEY_POWER) {
-            ok_pending = false;
+            play_hold_pending = false;
             dispatch_event(event, now_ms);
             continue;
         }
-        if (ok_pending && deadline_reached(now_ms, ok_deadline)) {
-            ok_pending = false;
-            dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
-        }
-        if (event.key == KEY_PLAY && event.gesture == KEY_GESTURE_PRESS) {
-            if (ok_pending) {
-                ok_pending = false;
-                if (app.display_on) {
-                    dispatch_event((KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, now_ms);
-                } else {
-                    player_skip(&app.player, 1);
-                }
-            } else {
-                ok_pending = true;
-                ok_deadline = now_ms + 300u;
-            }
+        if (take_neo_gesture(event, now_ms)) {
             continue;
-        }
-        if (ok_pending) {
-            ok_pending = false;
-            dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
         }
 #endif
         dispatch_event(event, now_ms);
     }
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
-    if (ok_pending && deadline_reached(now_ms, ok_deadline)) {
-        ok_pending = false;
-        dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
-    }
+    service_neo_gestures(now_ms);
 #endif
 }
 
@@ -709,7 +755,8 @@ void app_start(void)
     frame_diff_init(&app.frame_diff, row_hashes, HAL_DISPLAY_HEIGHT);
     key_tracker_init(&app.keys, &KEY_CONFIG);
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
-    ok_pending = false;
+    power_taps = 0;
+    play_hold_pending = false;
 #endif
     frame_stats_reset(&app.frame_stats);
     frame_stats_reset(&app.update_stats);
