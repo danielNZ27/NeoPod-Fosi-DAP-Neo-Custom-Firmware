@@ -55,14 +55,14 @@ DEV="$BUILD/platform/device"
 [[ $CLEAN -eq 1 ]] && rm -rf "$BUILD"
 mkdir -p "$OUT/sd-card/.echo"
 
-echo "Configuring NeoPod CMake..."
+echo "Configuring PatchPod CMake..."
 cmake -S "$REPO" -B "$BUILD" -G Ninja \
     -DCMAKE_TOOLCHAIN_FILE="$REPO/cmake/arm-none-eabi.cmake" \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=-O2 -DECHO_BOARD=neo \
     -DECHO_BUILD_SIM=OFF -DECHO_BUILD_TESTS=OFF -DECHO_BUILD_DEVICE=ON -DECHO_RELEASE=ON \
     -DECHO_JACK_DIAGNOSTICS=OFF
 
-echo "Building NeoPod targets..."
+echo "Building PatchPod targets..."
 cmake --build "$BUILD" --target echo_device echo_rescan_overlay \
     echo_core1 echo_core1_mp3 echo_core1_aac echo_core1_opus
 
@@ -73,7 +73,7 @@ arm-none-eabi-objcopy -O binary "$DEV/echo_core1_aac.elf" "$DEV/core1_aac.bin"
 arm-none-eabi-objcopy -O binary "$DEV/echo_core1_opus.elf" "$DEV/core1_opus.bin"
 
 IMG="$OUT/DP3_V${VERSION}.IMG"
-echo "Packaging NeoPod firmware image $(basename "$IMG")..."
+echo "Packaging PatchPod firmware image $(basename "$IMG")..."
 "$PY" "$REPO/tools/build_boot_image.py" "$REPO/assets/boot.png" "$OUT/sd-card/.echo/boot.rgb565"
 "$PY" "$REPO/tools/build_neo_image.py" --version "$VERSION" \
     --elf "$DEV/echo_device.elf" --output "$IMG" \

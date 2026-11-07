@@ -1,3 +1,11 @@
+# PatchPod
+
+**PatchPod** is a personal fork of [NeoPod](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware) by danielNZ27 for the Fosi Audio DAP Neo. Build it on macOS or Linux with `./build-neopod.sh`; the image and SD-card files land in `build/out`.
+
+The original NeoPod README follows.
+
+---
+
 # NeoPod
 
 [![Release](https://img.shields.io/github/v/release/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware?color=teal&label=Latest%20Release)](https://github.com/danielNZ27/NeoPod-Fosi-DAP-Neo-Custom-Firmware/releases)

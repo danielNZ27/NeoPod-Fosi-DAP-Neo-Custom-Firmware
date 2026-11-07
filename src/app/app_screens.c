@@ -196,7 +196,7 @@ static void build_home(AppScreens *screens, AppScreensContext context)
 #endif
     home_art_init(&screens->home_art, context.covers, context.store, context.player, theme);
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
-    const char *title = "NeoPod";
+    const char *title = "PatchPod";
 #else
     const char *title = "EchoPod";
 #endif

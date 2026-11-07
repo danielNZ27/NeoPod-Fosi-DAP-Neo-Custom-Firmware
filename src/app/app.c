@@ -123,7 +123,7 @@ static const uint32_t SCREEN_ON_CLOCK_MHZ = 200;
 static const uint32_t IDLE_CLOCK_MHZ = 96;
 static const FadeTiming GOODBYE_TIMING = {.fade_ms = 600, .hold_ms = 400, .rising = false};
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
-static const char SPLASH_TEXT[] = "NeoPod";
+static const char SPLASH_TEXT[] = "PatchPod";
 #else
 static const char SPLASH_TEXT[] = "EchoPod";
 #endif

@@ -24,7 +24,7 @@ enum {
 };
 
 static const char *const SHUFFLE_OPTIONS[SHUFFLE_MODE_COUNT] = {"Off", "Songs", "Albums"};
-static const char *const THEME_OPTIONS[THEME_COUNT] = {"NeoPod", "iPod Classic"};
+static const char *const THEME_OPTIONS[THEME_COUNT] = {"PatchPod", "iPod Classic"};
 static const char *const REPEAT_OPTIONS[REPEAT_MODE_COUNT] = {"Off", "One", "All"};
 static const char *const COLOR_OPTIONS[BUTTON_COLOR_COUNT] = {
     "Blue", "Green", "Teal", "Purple", "Pink", "Red", "Orange", "Gold", "Silver"

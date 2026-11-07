@@ -71,7 +71,7 @@ static void neo_audio_log(const char *path, const char *reason)
 {
     static char text[4096];
     StringBuilder b = string_builder_make(text, sizeof text);
-    string_builder_append(&b, "EchoPod Neo V147 playback diagnostic\nreason=");
+    string_builder_append(&b, "PatchPod playback diagnostic\nreason=");
     string_builder_append(&b, reason);
     string_builder_append(&b, "\npath=");
     string_builder_append(&b, path);
