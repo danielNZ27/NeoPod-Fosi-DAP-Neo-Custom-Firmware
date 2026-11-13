@@ -473,6 +473,17 @@ static void update_power(uint32_t now_ms)
 static void update_screen(uint32_t now_ms)
 {
     Screen *screen = top_screen();
+
+    if (app.wheel_lock.active &&
+        screen != &app.screens.now_playing.screen) {
+
+        NowPlayingScreen *np = &app.screens.now_playing;
+
+        if (np->screen.update != NULL) {
+            np->screen.update(np->screen.context, now_ms);
+        }
+    }
+
     if (screen->update != NULL) {
         screen->update(screen->context, now_ms);
     }
@@ -536,7 +547,16 @@ static void draw_frame(void *context, Canvas *canvas)
         return;
     }
     if (state->wheel_lock.active) {
-        wheel_lock_draw(&state->wheel_lock, canvas, &APP_THEME);
+        const NowPlayingScreen *np = &state->screens.now_playing;
+        const char *title = np->status.has_track && np->has_text ? np->title : "Not Playing";
+        const char *artist = np->status.has_track && np->has_text ? np->artist : "";
+        Image album_image;
+        const Image *cover = NULL;
+        if (np->status.has_track && np->has_text &&
+            cover_cache_full(&state->covers, np->album_index, &album_image) == COVER_LOADED) {
+            cover = &album_image;
+        }
+        wheel_lock_draw(&state->wheel_lock, canvas, &APP_THEME, title, artist, cover);
         return;
     }
     Screen *screen = screen_stack_top(&state->stack);

@@ -13,10 +13,10 @@ def main():
     spec = importlib.util.spec_from_file_location('flash_neo', root / 'flash-neo.py')
     helper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(helper)
-    image = release / 'DP3_V182.IMG'
+    image = release / 'DP3_V183.IMG'
     helper.checked_firmware_bytes(image)
     helper.companion_payload(image)
-    files = ['DP3_V182.IMG', 'SHA256SUMS.txt', 'FLASHER-SHA256SUMS.txt',
+    files = ['DP3_V183.IMG', 'SHA256SUMS.txt', 'FLASHER-SHA256SUMS.txt',
              'flash-neo.py', 'flash_neo_gui.py', 'flash-neo.exe']
     files += ['sd-card/.echo/' + name for name in helper.COMPANION_NAMES]
     for manifest in ('SHA256SUMS.txt', 'FLASHER-SHA256SUMS.txt'):
