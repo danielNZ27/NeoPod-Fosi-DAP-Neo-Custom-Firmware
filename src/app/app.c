@@ -114,7 +114,9 @@ typedef struct AppState {
 
 static AppState app;
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
-static bool ok_pending;
+/* NEOPOD_SELECT_GESTURES_V1 */
+static uint8_t ok_clicks;
+static bool ok_screen_on;
 static uint32_t ok_deadline;
 #endif
 
@@ -127,7 +129,7 @@ static const char SPLASH_TEXT[] = "NeoPod";
 #else
 static const char SPLASH_TEXT[] = "EchoPod";
 #endif
-static const char GOODBYE_TEXT[] = "Goodbye";
+static const char GOODBYE_TEXT[] = "NeoPod";
 static const char BATTERY_LOW_TEXT[] = "Battery low";
 static Color strip_pixels[HAL_DISPLAY_WIDTH * STRIP_HEIGHT];
 static uint32_t row_hashes[HAL_DISPLAY_HEIGHT];
@@ -385,49 +387,92 @@ static void dispatch_event(KeyEvent event, uint32_t now_ms)
     }
 }
 
+#if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+enum { OK_MULTI_CLICK_MS = 300 };
+
+/* Complete an unfinished single or double press after the click window. */
+static void finish_ok_clicks(uint32_t now_ms)
+{
+    if (ok_clicks == 0) return;
+    uint8_t clicks = ok_clicks;
+    bool screen_on = ok_screen_on;
+    ok_clicks = 0;
+    if (clicks == 1) {
+        dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
+    } else if (clicks == 2 && !screen_on) {
+        player_skip(&app.player, 1);
+    }
+}
+
+static void go_home(uint32_t now_ms)
+{
+    Screen *leaving = top_screen();
+    int depth_before = screen_stack_depth(&app.stack);
+    if (screen_stack_apply(&app.stack, screen_action_pop_to_root(), now_ms)) {
+        use_screen_key_behaviors();
+        start_slide(leaving, depth_before, now_ms);
+    }
+}
+#endif
+
 static void dispatch_key_events(uint32_t now_ms)
 {
     KeyEvent event;
     while (!app.powered_off && key_tracker_next_event(&app.keys, &event)) {
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
+        /* Don't intercept keys while the custom wheel lock is active. */
         if (app.wheel_lock.active && app.power.display_on && event.key != KEY_POWER) {
-            ok_pending = false;
+            ok_clicks = 0;
             dispatch_event(event, now_ms);
             continue;
         }
-        if (ok_pending && deadline_reached(now_ms, ok_deadline)) {
-            ok_pending = false;
-            dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
+        if (ok_clicks && deadline_reached(now_ms, ok_deadline)) {
+            finish_ok_clicks(now_ms);
         }
-        if (event.key == KEY_PLAY && event.gesture == KEY_GESTURE_PRESS) {
-            if (ok_pending) {
-                ok_pending = false;
-                if (app.display_on) {
-                    dispatch_event((KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, now_ms);
-                } else {
-                    player_skip(&app.player, 1);
-                }
+        if (event.key == KEY_PLAY && event.gesture == KEY_GESTURE_LONG_PRESS) {
+            /* A hold is never interpreted as a click. */
+            ok_clicks = 0;
+            if (app.display_on) {
+                go_home(now_ms);
             } else {
-                ok_pending = true;
-                ok_deadline = now_ms + 300u;
+                /* Keep existing dark-screen hold behavior. */
+                dispatch_event(event, now_ms);
             }
             continue;
         }
-        if (ok_pending) {
-            ok_pending = false;
-            dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
+        if (event.key == KEY_PLAY && event.gesture == KEY_GESTURE_PRESS) {
+            bool screen_on = app.display_on;
+            if (ok_clicks && ok_screen_on != screen_on) {
+                ok_clicks = 0;
+            }
+            if (ok_clicks == 0) {
+                ok_screen_on = screen_on;
+                ok_clicks = 1;
+            } else {
+                ok_clicks++;
+            }
+            ok_deadline = now_ms + OK_MULTI_CLICK_MS;
+            if (ok_clicks == 2 && screen_on) {
+                ok_clicks = 0;
+                dispatch_event((KeyEvent){KEY_BACK, KEY_GESTURE_PRESS}, now_ms);
+            } else if (ok_clicks >= 3 && !screen_on) {
+                ok_clicks = 0;
+                player_skip(&app.player, -1);
+            }
+            continue;
+        }
+        if (ok_clicks) {
+            finish_ok_clicks(now_ms);
         }
 #endif
         dispatch_event(event, now_ms);
     }
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
-    if (ok_pending && deadline_reached(now_ms, ok_deadline)) {
-        ok_pending = false;
-        dispatch_event((KeyEvent){KEY_PLAY, KEY_GESTURE_PRESS}, now_ms);
+    if (ok_clicks && deadline_reached(now_ms, ok_deadline)) {
+        finish_ok_clicks(now_ms);
     }
 #endif
 }
-
 static bool battery_empty(uint32_t now_ms)
 {
     if (!deadline_reached(now_ms, app.battery_check_ms)) {
@@ -473,6 +518,17 @@ static void update_power(uint32_t now_ms)
 static void update_screen(uint32_t now_ms)
 {
     Screen *screen = top_screen();
+
+    if (app.wheel_lock.active &&
+        screen != &app.screens.now_playing.screen) {
+
+        NowPlayingScreen *np = &app.screens.now_playing;
+
+        if (np->screen.update != NULL) {
+            np->screen.update(np->screen.context, now_ms);
+        }
+    }
+
     if (screen->update != NULL) {
         screen->update(screen->context, now_ms);
     }
@@ -536,7 +592,16 @@ static void draw_frame(void *context, Canvas *canvas)
         return;
     }
     if (state->wheel_lock.active) {
-        wheel_lock_draw(&state->wheel_lock, canvas, &APP_THEME);
+        const NowPlayingScreen *np = &state->screens.now_playing;
+        const char *title = np->status.has_track && np->has_text ? np->title : "Not Playing";
+        const char *artist = np->status.has_track && np->has_text ? np->artist : "";
+        Image album_image;
+        const Image *cover = NULL;
+        if (np->status.has_track && np->has_text &&
+            cover_cache_full(&state->covers, np->album_index, &album_image) == COVER_LOADED) {
+            cover = &album_image;
+        }
+        wheel_lock_draw(&state->wheel_lock, canvas, &APP_THEME, title, artist, cover);
         return;
     }
     Screen *screen = screen_stack_top(&state->stack);
@@ -709,7 +774,7 @@ void app_start(void)
     frame_diff_init(&app.frame_diff, row_hashes, HAL_DISPLAY_HEIGHT);
     key_tracker_init(&app.keys, &KEY_CONFIG);
 #if defined(ECHO_BOARD_NEO) || defined(ECHO_NEO_SIM)
-    ok_pending = false;
+    ok_clicks = 0;
 #endif
     frame_stats_reset(&app.frame_stats);
     frame_stats_reset(&app.update_stats);

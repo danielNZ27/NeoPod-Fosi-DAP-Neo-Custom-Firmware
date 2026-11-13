@@ -2,8 +2,26 @@
 #include "device/replay_gain_probe.h"
 
 enum {
-    MILLISECONDS_PER_SECOND = 1000
+    MILLISECONDS_PER_SECOND = 1000,
+    ID3V1_TAG_BYTES = 128
 };
+
+/* A legacy ID3v1 footer is not part of the FLAC stream. Trim it from the
+ * logical input size without changing the music file on disk. */
+static void skip_id3v1_footer(FlacInput *input)
+{
+    if (input->size < ID3V1_TAG_BYTES) {
+        return;
+    }
+    uint8_t marker[3];
+    if (!input->read(input->context, input->size - ID3V1_TAG_BYTES,
+                     marker, sizeof marker)) {
+        return;
+    }
+    if (marker[0] == 'T' && marker[1] == 'A' && marker[2] == 'G') {
+        input->size -= ID3V1_TAG_BYTES;
+    }
+}
 
 void flac_source_init(FlacSource *source, FlacFileOpener files, FlacDecoder *decoder)
 {
@@ -27,6 +45,7 @@ bool flac_source_open_at(FlacSource *source, const char *path, uint32_t start_ms
         return false;
     }
     source->open = true;
+    skip_id3v1_footer(&input);
     FlacDecoder *decoder = source->decoder;
     if (flac_open(decoder, input) != FLAC_OK) {
         flac_source_close(source);

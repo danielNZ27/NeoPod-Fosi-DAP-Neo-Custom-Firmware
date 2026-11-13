@@ -222,8 +222,32 @@ static SourceKind kind_of(const char *path)
 #ifdef ECHO_BOARD_NEO
     for (unsigned i=0; i<4; i++) sniff_magic[i] = magic[i];
 #endif
+    /* Some FLAC files are wrapped in a leading ID3v2 tag.  Inspect the
+       marker after the tag before the usual MP3 signature check: ID3 is
+       also a valid MP3 prefix, so checking MP3 first misclassifies these. */
+    bool id3_flac = false;
+    if (read && magic[0] == 'I' && magic[1] == 'D' && magic[2] == '3' &&
+        magic[3] != 0xffu && magic[4] != 0xffu &&
+        (magic[6] & 0x80u) == 0 && (magic[7] & 0x80u) == 0 &&
+        (magic[8] & 0x80u) == 0 && (magic[9] & 0x80u) == 0) {
+        uint32_t tag_size = ((uint32_t)magic[6] << 21) |
+                            ((uint32_t)magic[7] << 14) |
+                            ((uint32_t)magic[8] << 7) |
+                            (uint32_t)magic[9];
+        uint64_t offset = 10u + (uint64_t)tag_size;
+        /* ID3v2.4 optionally has a 10-byte footer. */
+        if (magic[3] == 4u && (magic[5] & 0x10u) != 0u) {
+            offset += 10u;
+        }
+        if (offset <= input.size && input.size - offset >= 4u) {
+            uint8_t flac_magic[4];
+            id3_flac = input.read(input.context, (uint32_t)offset,
+                                  flac_magic, sizeof flac_magic) &&
+                       tag_is(flac_magic, "fLaC");
+        }
+    }
     close_file(NULL);
-    if (!read || tag_is(magic, "fLaC")) {
+    if (!read || tag_is(magic, "fLaC") || id3_flac) {
         return SOURCE_FLAC;
     }
     if (tag_is(magic, "RIFF") && tag_is(magic + 8, "WAVE")) {
