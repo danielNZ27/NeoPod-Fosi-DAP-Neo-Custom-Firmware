@@ -10,7 +10,6 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
-
 SUPPORTED = os.name == "nt" or sys.platform == "darwin"
 if SUPPORTED:
     spec = importlib.util.spec_from_file_location("flash_neo", Path(__file__).parents[1] / "flash-neo.py")
@@ -76,7 +75,6 @@ class RecoveryConnectionTests(unittest.TestCase):
 
 class FakeUsb(flash.RockusbProtocol):
     """Record protocol packets without touching a device."""
-
     def __init__(self, responses=()):
         super().__init__()
         self.writes = []
@@ -157,12 +155,24 @@ class ResetTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "nt", "Windows handle close")
     def test_close_is_idempotent(self):
-        usb = flash.Rockusb.__new__(flash.Rockusb)
-        usb.tag, usb.h, usb.write_h = 100, 123, 456
-        with patch.object(flash.k, 'CloseHandle') as close:
+        """WinUSB frees one interface and closes one Windows handle, once each."""
+        usb = flash.RockusbWindows.__new__(flash.RockusbWindows)
+        usb.tag = 100
+        usb.h = 123
+        usb.interface = flash.c.c_void_p(456)
+
+        with patch.object(flash.k, 'CloseHandle') as close, \
+             patch.object(flash._winusb, 'WinUsb_Free') as free:
             usb.close()
+            free.assert_called_once()
+            self.assertEqual(456, free.call_args.args[0].value)
+            close.assert_called_once_with(123)
+            self.assertIsNone(usb.h)
+            self.assertFalse(usb.interface.value)
+
             usb.close()
-            self.assertEqual(2, close.call_count)
+            free.assert_called_once()
+            close.assert_called_once()
 
 
 @unittest.skipUnless(SUPPORTED, "Windows/macOS flash helper")
