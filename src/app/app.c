@@ -129,7 +129,7 @@ static const char SPLASH_TEXT[] = "NeoPod";
 #else
 static const char SPLASH_TEXT[] = "EchoPod";
 #endif
-static const char GOODBYE_TEXT[] = "Goodbye";
+static const char GOODBYE_TEXT[] = "NeoPod";
 static const char BATTERY_LOW_TEXT[] = "Battery low";
 static Color strip_pixels[HAL_DISPLAY_WIDTH * STRIP_HEIGHT];
 static uint32_t row_hashes[HAL_DISPLAY_HEIGHT];
