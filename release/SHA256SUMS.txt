@@ -1,7 +1,7 @@
-d2064f9fd5144a8c5a59a0a5dd1cf5541d93a0fbcaa1f1d2ec0f0d303c69ec1a  DP3_V183.IMG
-0b42213ea378fa65422207429230681c2a6cafa24749f9e386d0dbbca2cd7fc0  sd-card/.echo/boot.rgb565
+27e81a2d95724e80147181f5d0498348ab23b1b136d752934b62667469388979  DP3_V183.IMG
+412b8757fdc2901453543189a96cbf8104db8a4f4cd3b6455be72cde6d5da219  sd-card/.echo/boot.rgb565
 ee79cd02d149ed613e606fbe49c0040f00a2acb0f52cc9ee304a96899e2cc820  sd-card/.echo/neo_aac.bin
 8e47611ac3cf8d4b21084bd0e01b3cdd58afb3e0001894f1f01eaf5fc84fc06d  sd-card/.echo/neo_flac.bin
 cf7c5910cf17f6822f36d8b93ed895ee198c96cad4ccc0f19bf4d8699cec6f8f  sd-card/.echo/neo_mp3.bin
 3bc00d6c81309b42027fad9fd76a1cf4483d556da902809e631baabef272dcee  sd-card/.echo/neo_opus.bin
-0869a35bec5e27da069c23f722689e1762e052dcffe6200093ac60b760f06b7f  sd-card/.echo/neo_scan.bin
+93cd742ddcdef2c235532a345d8dd8d420cfeab2a24e3e2510bff482cfb10486  sd-card/.echo/neo_scan.bin

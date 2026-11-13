@@ -19,6 +19,8 @@ static const char EMPTY_MESSAGE[] = "Nothing here";
 static const char NO_FAVORITES_MESSAGE[] = "Hold Play on an album to add it";
 static const char NO_BOOKS_MESSAGE[] = "Put books in an Audiobooks folder";
 static const char NO_SHOWS_MESSAGE[] = "Put shows in a Podcasts folder";
+/* NEOPOD_SHUFFLE_ALL_V1: All Songs has one virtual action before indexed tracks. */
+static const char SHUFFLE_ALL_LABEL[] = "Shuffle All";
 static const char FAVORITES_TITLE[] = "Favorites";
 static const char AUDIOBOOKS_TITLE[] = "Audiobooks";
 static const char PODCASTS_TITLE[] = "Podcasts";
@@ -80,13 +82,22 @@ static bool rows_current(const BrowseScreen *browse)
     return rows != NULL && rows->first == browse->list.top;
 }
 
+static bool has_shuffle_all(const BrowseScreen *browse)
+{
+    return !browse->favorites_only && browse->query.kind == BROWSE_ALL_SONGS &&
+           browse->shelf == SPOKEN_NONE && browse->count > 0;
+}
 static uint32_t source_position(const BrowseScreen *browse, int index)
 {
-    return browse->favorites_only ? browse->pool->favorite_albums[index] : (uint32_t)index;
+    return browse->favorites_only ? browse->pool->favorite_albums[index]
+                                  : (uint32_t)(index - (has_shuffle_all(browse) ? 1 : 0));
 }
 
 static bool item_at(const BrowseScreen *browse, int index, BrowseItem *item)
 {
+    if (index < 0 || (has_shuffle_all(browse) && index == 0)) {
+        return false;
+    }
     return browse_item(browse->pool->config.library, browse->query, source_position(browse, index),
                        item);
 }
@@ -129,6 +140,11 @@ static void load_row(BrowseScreen *browse, BrowseRows *rows, int row, int index)
     BrowseItem item;
     rows->details[row][0] = '\0';
     rows->opens[row] = false;
+    if (has_shuffle_all(browse) && index == 0) {
+        StringBuilder label = string_builder_make(rows->labels[row], BROWSE_LABEL_CAPACITY);
+        string_builder_append(&label, SHUFFLE_ALL_LABEL);
+        return;
+    }
     if (!item_at(browse, index, &item) ||
         !browse_item_text(browse->pool->config.library, browse->query, item, text)) {
         rows->labels[row][0] = '\0';
@@ -215,6 +231,9 @@ static bool is_lettered(BrowseKind kind)
 static int row_section(const void *context, int index)
 {
     const BrowseScreen *browse = context;
+    if (has_shuffle_all(browse) && index == 0) {
+        return list_section_of_key("#");
+    }
     char label[BROWSE_LABEL_CAPACITY];
     char detail[BROWSE_DETAIL_CAPACITY];
     BrowseText text = {label, sizeof label, detail, sizeof detail};
@@ -253,7 +272,7 @@ static ScreenAction play_from(BrowseScreen *browse, int index)
     if (is_loaded_track(browse, index)) {
         return screen_action_push(browse->pool->config.now_playing);
     }
-    return start_list(browse, browse->query, (uint32_t)index);
+    return start_list(browse, browse->query, source_position(browse, index));
 }
 
 static ScreenAction open_child(BrowseScreen *browse, BrowseItem item)
@@ -304,9 +323,32 @@ static bool resumes_books(const BrowseScreen *browse, BrowseItem item)
            item.kind == BROWSE_ITEM_FOLDER;
 }
 
+static ScreenAction shuffle_all(BrowseScreen *browse)
+{
+    BrowsePoolConfig *config = &browse->pool->config;
+    uint32_t songs = browse_count(config->library, browse->query);
+    if (songs == 0 || config->player == NULL) {
+        return screen_action_none();
+    }
+    uint32_t seed = hal_clock_microseconds();
+    uint32_t first = seed % songs;
+    /* Shuffle is enabled before constructing the new playback queue. */
+    player_set_shuffle(config->player, SHUFFLE_SONGS, seed);
+    PlayerListStart start = {.source = browse->query,
+                             .position = first,
+                             .seed = seed ^ 0x9e3779b9u,
+                             .in_order = false};
+    if (!player_play_from(config->player, start)) {
+        return screen_action_none();
+    }
+    return screen_action_push(config->now_playing);
+}
 static ScreenAction select_row(void *context, int index)
 {
     BrowseScreen *browse = context;
+    if (has_shuffle_all(browse) && index == 0) {
+        return shuffle_all(browse);
+    }
     BrowseItem item;
     if (!item_at(browse, index, &item)) {
         return screen_action_none();
@@ -520,6 +562,9 @@ Screen *browse_pool_open(BrowsePool *pool, int level, BrowseQuery query)
     browse->shelf = SPOKEN_NONE;
     browse->shelf_root = false;
     browse->count = browse_count(pool->config.library, query);
+    if (query.kind == BROWSE_ALL_SONGS && browse->count > 0) {
+        browse->count++;  /* Virtual Shuffle All action, not a database track. */
+    }
     browse_title(pool->config.library, query, browse->title, sizeof browse->title);
     browse->model = (ListModel){.context = browse,
                                 .count = row_count,
